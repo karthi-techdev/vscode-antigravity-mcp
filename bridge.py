@@ -9,6 +9,7 @@ No git cloning required.
 import argparse
 import asyncio
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -600,6 +601,10 @@ class LocalBridgeAgent:
             "Content-Type": "application/json",
             "Connection": "close"
         }
+        self.user_hash = hashlib.sha256(self.auth_token.encode()).hexdigest()[:16]
+        self.mesh_task_topic = f"mcp_task_{self.user_hash}"
+        self.seen_task_ids = set()
+        self.task_lock = asyncio.Lock()
         self.running = False
 
     def _execute_sync(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
@@ -735,9 +740,94 @@ class LocalBridgeAgent:
             except Exception as e:
                 self._log(f"Heartbeat ping missed: {e}", "⚠️")
 
-    async def _poll_worker(self, worker_id: int, client: httpx.AsyncClient, poll_url: str, result_url: str):
-        """Worker that polls cloud relay for tasks and submits results with real-time debug logging."""
-        consecutive_errors = 0
+    async def handle_task(self, task: Dict[str, Any], source: str = "Mesh"):
+        """Executes a received task and delivers the result back via mesh and HTTP."""
+        task_id = task.get("task_id")
+        if not task_id:
+            return
+
+        async with self.task_lock:
+            if task_id in self.seen_task_ids:
+                return
+            self.seen_task_ids.add(task_id)
+
+        tool_name = task.get("tool_name")
+        params = task.get("parameters", {})
+
+        now_str = datetime.now().strftime("%H:%M:%S")
+        print("\n" + "─" * 70, flush=True)
+        print(f"⚡ [{now_str}] INCOMING AI REQUEST: {tool_name} (via {source})", flush=True)
+        print(f"📦 Parameters: {json.dumps(params, ensure_ascii=False)}", flush=True)
+        print(f"📁 Target Project: {self.executor.active_project or 'Default Root'} ({self.executor.current_workspace_path})", flush=True)
+        print(f"⚙️ Executing local action...", flush=True)
+
+        t0 = time.time()
+        result, error = None, None
+        try:
+            result = await self.execute_task(tool_name, params)
+            exec_ms = round((time.time() - t0) * 1000, 1)
+            print(f"✅ Local execution completed successfully in {exec_ms}ms", flush=True)
+            preview = str(result)
+            if len(preview) > 220:
+                preview = preview[:220] + "... [truncated]"
+            print(f"📊 Result: {preview}", flush=True)
+        except Exception as e:
+            error = str(e)
+            exec_ms = round((time.time() - t0) * 1000, 1)
+            print(f"❌ Local execution failed after {exec_ms}ms: {error}", flush=True)
+
+        # 1. Instantly deliver result over distributed mesh
+        try:
+            mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
+            limits = httpx.Limits(max_keepalive_connections=0)
+            async with httpx.AsyncClient(timeout=3.0, limits=limits) as m_client:
+                await m_client.post(mesh_url, data=json.dumps({"task_id": task_id, "result": result, "error": error}))
+            deliv_ms = round((time.time() - t0) * 1000, 1)
+            print(f"🚀 Delivered result to AI assistant via mesh in {deliv_ms}ms", flush=True)
+        except Exception:
+            pass
+
+        # 2. Also submit to gateway HTTP endpoint as confirmation
+        try:
+            limits = httpx.Limits(max_keepalive_connections=0)
+            async with httpx.AsyncClient(timeout=4.0, limits=limits) as res_client:
+                await res_client.post(
+                    f"{self.server_url}/api/relay/result",
+                    headers=self.headers,
+                    json={"task_id": task_id, "result": result, "error": error}
+                )
+        except Exception:
+            pass
+
+        print("─" * 70 + "\n", flush=True)
+
+    async def _mesh_stream_worker(self):
+        """Persistent SSE/JSON stream worker for sub-100ms task reception."""
+        url = f"https://ntfy.sh/{self.mesh_task_topic}/json?since=20s"
+        limits = httpx.Limits(max_keepalive_connections=0)
+        while self.running:
+            try:
+                async with httpx.AsyncClient(timeout=None, limits=limits) as client:
+                    async with client.stream("GET", url) as resp:
+                        async for line in resp.aiter_lines():
+                            if not self.running:
+                                break
+                            if not line.strip():
+                                continue
+                            try:
+                                msg = json.loads(line)
+                                if msg.get("event") == "message":
+                                    task = json.loads(msg["message"])
+                                    asyncio.create_task(self.handle_task(task, source="Zero-Latency Mesh"))
+                            except Exception:
+                                pass
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                await asyncio.sleep(1.0)
+
+    async def _poll_worker(self, worker_id: int, client: httpx.AsyncClient, poll_url: str):
+        """Worker that polls cloud relay for tasks as backup."""
         while self.running:
             try:
                 response = await client.post(poll_url, headers=self.headers, json={"wait_timeout": 1.5})
@@ -750,82 +840,9 @@ class LocalBridgeAgent:
                     continue
 
                 data = response.json()
-                consecutive_errors = 0
                 task = data.get("task")
-                if not task:
-                    continue
-
-                task_id = task.get("task_id")
-                tool_name = task.get("tool_name")
-                params = task.get("parameters", {})
-
-                # Rich real-time debug log banner for incoming request
-                now_str = datetime.now().strftime("%H:%M:%S")
-                print("\n" + "─" * 70, flush=True)
-                print(f"⚡ [{now_str}] INCOMING AI REQUEST: {tool_name}", flush=True)
-                print(f"📦 Parameters: {json.dumps(params, ensure_ascii=False)}", flush=True)
-                print(f"📁 Target Project: {self.executor.active_project or 'Default Root'} ({self.executor.current_workspace_path})", flush=True)
-                print(f"⚙️ Executing local action...", flush=True)
-
-                t0 = time.time()
-                result, error = None, None
-                try:
-                    result = await self.execute_task(tool_name, params)
-                    exec_ms = round((time.time() - t0) * 1000, 1)
-                    print(f"✅ Local execution completed successfully in {exec_ms}ms", flush=True)
-                    preview = str(result)
-                    if len(preview) > 220:
-                        preview = preview[:220] + "... [truncated]"
-                    print(f"📊 Result: {preview}", flush=True)
-                except Exception as e:
-                    error = str(e)
-                    exec_ms = round((time.time() - t0) * 1000, 1)
-                    print(f"❌ Local execution failed after {exec_ms}ms: {error}", flush=True)
-
-                # Submit result back to cloud gateway with real-time status reporting
-                res_start = time.time()
-                attempt = 0
-                delivered = False
-
-                # Broadcast directly to cross-container mesh so waiting serverless container receives result instantly
-                try:
-                    mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
-                    async with httpx.AsyncClient(timeout=2.0, limits=httpx.Limits(max_keepalive_connections=0)) as m_client:
-                        await m_client.post(mesh_url, json={"task_id": task_id, "result": result, "error": error})
-                except Exception:
-                    pass
-
-                while (time.time() - res_start) < 26.0 and self.running:
-                    attempt += 1
-                    try:
-                        async with httpx.AsyncClient(timeout=4.0, limits=httpx.Limits(max_keepalive_connections=0)) as res_client:
-                            res = await res_client.post(
-                                result_url,
-                                headers=self.headers,
-                                json={"task_id": task_id, "result": result, "error": error}
-                            )
-                            if res.status_code == 200:
-                                deliv_ms = round((time.time() - res_start) * 1000, 1)
-                                print(f"🚀 Delivered result to AI assistant in {deliv_ms}ms (attempt {attempt})", flush=True)
-                                delivered = True
-                                break
-                            elif attempt == 1:
-                                print(f"⏳ Waiting for cloud container to receive result (attempt {attempt}, status {res.status_code})...", flush=True)
-                            elif attempt % 6 == 0:
-                                print(f"⏳ Synchronizing with cloud container (attempt {attempt}, status {res.status_code})...", flush=True)
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.25)
-
-                if not delivered and self.running:
-                    print(f"⚠️ Result delivery timed out after 26s across cloud containers.", flush=True)
-
-                print("─" * 70 + "\n", flush=True)
-
-            except httpx.HTTPError:
-                consecutive_errors += 1
-                wait_time = min(5, 2 ** min(consecutive_errors, 2))
-                await asyncio.sleep(wait_time)
+                if task:
+                    await self.handle_task(task, source="HTTP Gateway")
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -845,24 +862,24 @@ class LocalBridgeAgent:
         print("💡 Ready! When Claude, ChatGPT, or Gemini Web calls a tool, logs will stream below:\n", flush=True)
 
         poll_url = f"{self.server_url}/api/relay/poll"
-        result_url = f"{self.server_url}/api/relay/result"
 
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=20)
         async with httpx.AsyncClient(timeout=15.0, limits=limits) as client:
             keepalive_task = asyncio.create_task(self._keepalive_loop(client))
-            workers = [
-                asyncio.create_task(self._poll_worker(i, client, poll_url, result_url))
-                for i in range(3)
+            mesh_task = asyncio.create_task(self._mesh_stream_worker())
+            poll_tasks = [
+                asyncio.create_task(self._poll_worker(i, client, poll_url))
+                for i in range(2)
             ]
+            all_tasks = [keepalive_task, mesh_task] + poll_tasks
             try:
-                await asyncio.gather(*workers, return_exceptions=True)
+                await asyncio.gather(mesh_task, *poll_tasks, return_exceptions=True)
             except asyncio.CancelledError:
                 pass
             finally:
                 self.running = False
-                keepalive_task.cancel()
-                for w in workers:
-                    w.cancel()
+                for t in all_tasks:
+                    t.cancel()
 
 
 CONFIG_FILE = Path.home() / ".universal_ide_bridge.json"

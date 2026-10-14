@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import time
 import uuid
@@ -51,13 +52,18 @@ class InMemoryRelayManager:
         self.client_heartbeats[user_id] = time.time()
 
     def is_client_online(self, user_id: str, timeout_seconds: float = 120.0) -> bool:
+        # In multi-instance serverless environments like Vercel, requests hit different containers.
+        # Returning True prevents false-negative offline errors across ephemeral instances.
         last_seen = self.client_heartbeats.get(user_id)
         if not last_seen:
-            return False
+            return True
         return (time.time() - last_seen) < timeout_seconds
 
     async def dispatch_task(self, user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
         task = RelayTask(user_id, tool_name, parameters)
+        user_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
+        task_topic = f"mcp_task_{user_hash}"
+        res_topic = f"mcp_res_{task.task_id}"
 
         async with self._lock:
             if user_id not in self.pending_tasks:
@@ -68,28 +74,43 @@ class InMemoryRelayManager:
             if user_id in self.user_task_events:
                 self.user_task_events[user_id].set()
 
-        # Listen for cross-container mesh delivery in case result lands on a different Vercel container
+        # Instantly publish task to distributed mesh so local bridge receives it within 100ms
+        task_payload = task.to_dict()
+        task_payload["user_id"] = user_id
+        async def _publish_task():
+            limits = httpx.Limits(max_keepalive_connections=0)
+            try:
+                async with httpx.AsyncClient(timeout=3.0, limits=limits) as p_client:
+                    await p_client.post(f"https://ntfy.sh/{task_topic}", data=json.dumps(task_payload))
+            except Exception:
+                pass
+
+        asyncio.create_task(_publish_task())
+
+        # Listen for result via distributed mesh stream across ephemeral Vercel containers
         async def _mesh_listener():
-            mesh_url = f"https://ntfy.sh/mcp_res_{task.task_id}/json?poll=1"
             limits = httpx.Limits(max_keepalive_connections=0)
             t0 = time.time()
-            while (time.time() - t0) < (RELAY_TASK_TIMEOUT - 1) and not task.event.is_set():
+            while (time.time() - t0) < (RELAY_TASK_TIMEOUT - 0.5) and not task.event.is_set():
                 try:
-                    async with httpx.AsyncClient(timeout=2.0, limits=limits) as m_client:
-                        m_res = await m_client.get(mesh_url)
-                        if m_res.status_code == 200 and m_res.text.strip():
-                            for line in m_res.text.strip().splitlines():
-                                data = json.loads(line)
-                                if data.get("event") == "message":
-                                    payload = json.loads(data["message"])
-                                    task.result = payload.get("result")
-                                    task.error = payload.get("error")
-                                    task.completed_at = time.time()
-                                    task.event.set()
-                                    return
+                    async with httpx.AsyncClient(timeout=RELAY_TASK_TIMEOUT, limits=limits) as m_client:
+                        async with m_client.stream("GET", f"https://ntfy.sh/{res_topic}/json") as resp:
+                            async for line in resp.aiter_lines():
+                                if not line.strip() or task.event.is_set():
+                                    continue
+                                try:
+                                    data = json.loads(line)
+                                    if data.get("event") == "message":
+                                        payload = json.loads(data["message"])
+                                        task.result = payload.get("result")
+                                        task.error = payload.get("error")
+                                        task.completed_at = time.time()
+                                        task.event.set()
+                                        return
+                                except Exception:
+                                    pass
                 except Exception:
-                    pass
-                await asyncio.sleep(0.35)
+                    await asyncio.sleep(0.2)
 
         mesh_worker = asyncio.create_task(_mesh_listener())
 
@@ -101,12 +122,6 @@ class InMemoryRelayManager:
                 if user_id in self.pending_tasks and task in self.pending_tasks[user_id]:
                     self.pending_tasks[user_id].remove(task)
 
-            if not self.is_client_online(user_id):
-                raise RuntimeError(
-                    f"No active local IDE bridge detected. "
-                    "Please run the local bridge client on your computer: "
-                    "`python bridge.py --key <your-key>`"
-                )
             raise TimeoutError(
                 f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'."
             )
@@ -153,21 +168,17 @@ class InMemoryRelayManager:
                 task.error = error
                 task.completed_at = time.time()
                 task.event.set()
-                return True
 
-        # If task was not in this container's in-memory RAM (multi-container serverless routing):
-        # Relay result via cross-container mesh so the awaiting container receives it immediately!
+        # Always broadcast result via cross-container mesh so whichever Vercel container is awaiting the result receives it immediately!
         try:
             mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
             payload = {"task_id": task_id, "result": result, "error": error}
             limits = httpx.Limits(max_keepalive_connections=0)
             async with httpx.AsyncClient(timeout=3.0, limits=limits) as client:
-                res = await client.post(mesh_url, json=payload)
-                if res.status_code == 200:
-                    return True
+                await client.post(mesh_url, data=json.dumps(payload))
         except Exception:
             pass
-        return False
+        return True
 
 
 class UpstashRedisRelay:
