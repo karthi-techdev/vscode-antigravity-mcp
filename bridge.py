@@ -1,6 +1,7 @@
 """
-Antigravity IDE - Standalone Global Multi-Project Bridge
-Connects any project on your computer to Gemini Web / ChatGPT via hosted MCP Gateway (Vercel).
+Universal IDE & Developer Workspace - Standalone Global Multi-Project Bridge
+Connects any project or IDE (VS Code, Cursor, Windsurf, JetBrains, Antigravity, Terminal)
+to Gemini Web, ChatGPT, Claude via hosted MCP Gateway (Vercel).
 Supports system-wide multi-project switching and background startup.
 No git cloning required.
 """
@@ -524,7 +525,7 @@ class LocalBridgeAgent:
         self.executor = LocalIDEExecutor(workspace_dir=workspace_dir, projects_root=projects_root)
         self.headers = {
             "Authorization": f"Bearer {self.auth_token}",
-            "User-Agent": "Antigravity-Bridge/1.0",
+            "User-Agent": "Universal-IDE-Bridge/1.0",
             "Content-Type": "application/json"
         }
         self.running = False
@@ -571,7 +572,7 @@ class LocalBridgeAgent:
     async def run(self):
         self.running = True
         print("=" * 60)
-        print("🚀 Antigravity IDE Global Multi-Project Bridge Connected")
+        print("🚀 Universal IDE Global Multi-Project Bridge Connected")
         print(f"📁 Projects Root:  {self.executor.projects_root}")
         if self.executor.active_project:
             print(f"🎯 Active Project: {self.executor.active_project}")
@@ -643,15 +644,24 @@ def handle_startup_installation(server: str, key: str, root_dir: str, uninstall:
         print(f"❌ Windows Startup directory not found at {startup_dir}")
         return
 
-    vbs_path = startup_dir / "AntigravityGlobalBridge.vbs"
+    vbs_path = startup_dir / "UniversalIDEGlobalBridge.vbs"
+    legacy_vbs = startup_dir / "AntigravityGlobalBridge.vbs"
 
     if uninstall:
-        if vbs_path.exists():
-            vbs_path.unlink()
-            print("✅ Removed Antigravity Global Bridge from Windows Startup.")
+        removed = False
+        for path in (vbs_path, legacy_vbs):
+            if path.exists():
+                path.unlink()
+                removed = True
+        if removed:
+            print("✅ Removed Universal IDE Global Bridge from Windows Startup.")
         else:
-            print("Notice: Antigravity Global Bridge was not installed in Startup.")
+            print("Notice: Universal IDE Global Bridge was not installed in Startup.")
         return
+
+    # Clean legacy if upgrading
+    if legacy_vbs.exists():
+        legacy_vbs.unlink()
 
     python_exe = sys.executable
     script_path = Path(__file__).resolve()
@@ -663,7 +673,7 @@ WshShell.Run """{python_exe}"" ""{script_path}"" --server ""{server}"" --key ""{
         f.write(vbs_content)
 
     print(f"\n=======================================================")
-    print(f"🎉 Antigravity Global Bridge successfully installed!")
+    print(f"🎉 Universal IDE Global Bridge successfully installed!")
     print(f"📁 Projects Root: {root_dir}")
     print(f"📍 Location:      {vbs_path}")
     print(f"⚡ It will now run silently in the background on every Windows boot.")
@@ -671,7 +681,7 @@ WshShell.Run """{python_exe}"" ""{script_path}"" --server ""{server}"" --key ""{
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Antigravity IDE Standalone Global Multi-Project Bridge")
+    parser = argparse.ArgumentParser(description="Universal IDE Standalone Global Multi-Project Bridge")
     parser.add_argument("--server", default="https://vscode-antigravity-mcp.vercel.app", help="Cloud MCP Server URL")
     parser.add_argument("--key", required=False, default=os.getenv("MCP_AUTH_TOKEN", ""), help="Your User Auth Token")
     parser.add_argument("--dir", default=".", help="Workspace directory (default: current directory)")

@@ -1,7 +1,7 @@
 [project]
 name = "vscode-antigravity-mcp"
 version = "0.1.0"
-description = "Multi-Tenant MCP Server & Local IDE Bridge"
+description = "Universal Remote MCP Bridge connecting Web AI LLMs to any local IDE or developer workspace"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

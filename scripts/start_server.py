@@ -10,5 +10,5 @@ if str(root_dir) not in sys.path:
 from server.config import PORT, HOST, DEBUG
 
 if __name__ == "__main__":
-    print(f"Starting Antigravity MCP Server on {HOST}:{PORT} (debug={DEBUG})...")
+    print(f"Starting Universal IDE MCP Server on {HOST}:{PORT} (debug={DEBUG})...")
     uvicorn.run("server.app:app", host=HOST, port=PORT, reload=DEBUG)

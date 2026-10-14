@@ -1,6 +1,6 @@
-# Antigravity Multi-Tenant IDE MCP Bridge 🚀
+# Universal Local IDE & Workspace MCP Bridge 🚀
 
-> Connect Web AI assistants (**Gemini Web, ChatGPT, Claude**) directly and securely to your local IDE (**VS Code, Antigravity IDE**) — with multi-user isolation, zero open ports, and hosted on **Vercel**.
+> Connect Web AI assistants (**Gemini Web, ChatGPT, Claude**) directly and securely to **ANY local IDE or developer workspace** (**VS Code, Cursor, Windsurf, JetBrains / IntelliJ / PyCharm, Antigravity, Zed, Neovim, Terminal**) — with multi-user isolation, zero open ports, and hosted on **Vercel**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -14,7 +14,7 @@
 
 Cloud AI models (Gemini Web, ChatGPT) cannot directly reach into your computer because of firewalls and Wi-Fi routers (NAT). 
 
-**Antigravity MCP Bridge** creates a secure outbound tunnel between your local project and the cloud:
+**Universal IDE MCP Bridge** creates a secure outbound tunnel between your local projects (open in any IDE or terminal) and the cloud:
 
 ```
 ┌──────────────────────────────────────┐
@@ -135,19 +135,16 @@ Choose whichever Web AI chat you use in your browser:
 
 #### 🔵 2. Gemini Web (`gemini.google.com` & Google AI Studio)
 
-##### A. Gemini Web (`gemini.google.com`) - Native Connected Apps (Shown in screenshot!):
+##### A. Gemini Web (`gemini.google.com`) - Native Connected Apps:
 1. In your browser, open **[gemini.google.com](https://gemini.google.com)**.
-2. Go to **Settings** ➔ **Connected apps** (or Extensions) ➔ click **Connect to an MCP server**.
+2. Go to **Settings** ➔ **Connected apps** ➔ click **Connect to an MCP server**.
 3. In **MCP server URL**, enter:
    ```text
-   https://vscode-antigravity-mcp.vercel.app/mcp
+   https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY
    ```
-4. Click **Additional settings** (*Show more*):
-   * Add header:
-     * **Header Name**: `Authorization`
-     * **Header Value**: `Bearer YOUR_SECRET_KEY` (e.g. `Bearer D4_PROJECT_MCP_SERVER`)
-   * *(Alternatively, you can include your token in the URL: `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY`)*
-5. Click **Next** ➔ Connected! Gemini can now discover and run tools directly on your local computer!
+4. Leave **Client ID** and **Client secret** blank (OAuth is not needed).
+5. Click **Next** ➔ Gemini will discover and display all 17 actions ➔ Click **Connect**.
+6. Open a **New Chat**, type `@Universal IDE Remote Bridge` (or `@`), and ask Gemini to inspect, edit, or run commands on any project!
 
 ##### B. Google AI Studio Web (`aistudio.google.com`) - Native Web Chat:
 1. Open [aistudio.google.com](https://aistudio.google.com) in your browser and start a new chat.

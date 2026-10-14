@@ -21,8 +21,8 @@ from fastapi.responses import RedirectResponse, PlainTextResponse, JSONResponse
 
 # Initialize FastMCP Server
 mcp_server = FastMCP(
-    name="Antigravity IDE Remote Bridge",
-    instructions="Connects web AI assistants to local VS Code and Antigravity IDE workspaces."
+    name="Universal IDE Remote Bridge",
+    instructions="Connects web AI assistants to local VS Code, Cursor, Windsurf, JetBrains, Antigravity, and any IDE workspace."
 )
 register_tools(mcp_server)
 
@@ -41,8 +41,8 @@ async def app_lifespan(fastapi_app: FastAPI):
 
 # Initialize FastAPI Application with combined FastMCP lifespan
 app = FastAPI(
-    title="Antigravity IDE MCP Gateway",
-    description="Multi-Tenant MCP & REST Bridge connecting Web LLMs to Local VS Code / Antigravity instances.",
+    title="Universal IDE MCP Gateway",
+    description="Multi-Tenant MCP & REST Bridge connecting Web LLMs to any local IDE or developer workspace (VS Code, Cursor, Windsurf, JetBrains, etc.).",
     version="0.1.0",
     lifespan=app_lifespan
 )
@@ -65,7 +65,7 @@ async def mcp_probe_middleware(request: Request, call_next):
                 "status": "ok",
                 "protocol": "model-context-protocol",
                 "transport": "streamable-http",
-                "server": "Antigravity IDE MCP Gateway"
+                "server": "Universal IDE MCP Gateway"
             })
     if request.url.path == "/mcp":
         request.scope["path"] = "/mcp/"
@@ -90,11 +90,11 @@ class GenerateTokenRequest(BaseModel):
 async def root():
     """Service status and quickstart information."""
     return {
-        "service": "Antigravity IDE MCP Gateway",
+        "service": "Universal IDE MCP Gateway",
         "version": "0.1.0",
         "status": "healthy",
-        "mcp_sse_endpoint": "/mcp/sse",
-        "mcp_messages_endpoint": "/mcp/messages",
+        "mcp_sse_endpoint": "/sse/sse",
+        "mcp_streamable_endpoint": "/mcp",
         "documentation": "/docs"
     }
 
