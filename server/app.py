@@ -56,16 +56,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Probe middleware: responds with 200 OK JSON to GET/HEAD probes on /mcp (Gemini Connected Apps validation)
+# Probe & rewrite middleware: responds with 200 OK JSON to GET/HEAD probes on /mcp and avoids 307 redirects on POST
 @app.middleware("http")
 async def mcp_probe_middleware(request: Request, call_next):
-    if request.url.path in ("/mcp", "/mcp/") and request.method in ("GET", "HEAD"):
-        return JSONResponse({
-            "status": "ok",
-            "protocol": "model-context-protocol",
-            "transport": "streamable-http",
-            "server": "Antigravity IDE MCP Gateway"
-        })
+    if request.url.path in ("/mcp", "/mcp/"):
+        if request.method in ("GET", "HEAD"):
+            return JSONResponse({
+                "status": "ok",
+                "protocol": "model-context-protocol",
+                "transport": "streamable-http",
+                "server": "Antigravity IDE MCP Gateway"
+            })
+    if request.url.path == "/mcp":
+        request.scope["path"] = "/mcp/"
     return await call_next(request)
 
 # Mount StreamableHTTP at /mcp (Gemini Web Connected Apps connects directly to /mcp)
