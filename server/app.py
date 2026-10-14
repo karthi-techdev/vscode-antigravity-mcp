@@ -99,10 +99,19 @@ async def root():
     }
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
-    """Health check for uptime monitors and container orchestrators."""
-    return {"status": "ok", "timestamp": time.time()}
+    """Health check endpoint to keep Vercel serverless function warm and monitor uptime."""
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "service": "Universal IDE MCP Gateway",
+            "timestamp": time.time()
+        },
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+    )
 
 
 @app.get("/bridge.py")

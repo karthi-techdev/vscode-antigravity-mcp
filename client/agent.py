@@ -138,6 +138,18 @@ class LocalBridgeAgent:
         else:
             raise NotImplementedError(f"Tool '{tool_name}' is not recognized by the local bridge.")
 
+    async def _keepalive_loop(self, client: httpx.AsyncClient):
+        """Pings /health every 60 seconds to keep the Vercel serverless function warm and alive."""
+        health_url = f"{self.server_url}/health"
+        while self.running:
+            try:
+                await asyncio.sleep(60)
+                if not self.running:
+                    break
+                await client.get(health_url, headers=self.headers, timeout=10.0)
+            except Exception:
+                pass
+
     async def run(self):
         """Main event loop: poll for jobs, execute, and return results."""
         self.running = True
@@ -155,65 +167,68 @@ class LocalBridgeAgent:
         result_url = f"{self.server_url}/api/relay/result"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
+            keepalive_task = asyncio.create_task(self._keepalive_loop(client))
             consecutive_errors = 0
+            try:
+                while self.running:
+                    try:
+                        response = await client.post(poll_url, headers=self.headers, json={"wait_timeout": 15})
+                        
+                        if response.status_code == 401:
+                            print(f"❌ Authentication failed: Invalid token '{self.auth_token}'. Exiting.")
+                            self.running = False
+                            break
 
-            while self.running:
-                try:
-                    response = await client.post(poll_url, headers=self.headers, json={"wait_timeout": 15})
-                    
-                    if response.status_code == 401:
-                        print(f"❌ Authentication failed: Invalid token '{self.auth_token}'. Exiting.")
+                        if response.status_code != 200:
+                            await asyncio.sleep(3)
+                            continue
+
+                        data = response.json()
+                        consecutive_errors = 0
+                        task = data.get("task")
+
+                        if not task:
+                            continue
+
+                        task_id = task.get("task_id")
+                        tool_name = task.get("tool_name")
+                        params = task.get("parameters", {})
+
+                        print(f"⚡ [AI REQUEST] Tool: {tool_name} | Params: {params}")
+
+                        result = None
+                        error = None
+                        try:
+                            result = await self.execute_task(tool_name, params)
+                            print(f"✅ [SUCCESS] Finished {tool_name}")
+                        except Exception as e:
+                            error = str(e)
+                            print(f"❌ [TOOL ERROR] {error}")
+
+                        await client.post(
+                            result_url,
+                            headers=self.headers,
+                            json={
+                                "task_id": task_id,
+                                "result": result,
+                                "error": error
+                            }
+                        )
+
+                    except (httpx.ConnectError, httpx.TimeoutException):
+                        consecutive_errors += 1
+                        wait_time = min(10, 2 ** consecutive_errors)
+                        print(f"🔄 Connection to cloud relay interrupted. Retrying in {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    except asyncio.CancelledError:
+                        print("\n🛑 Local bridge stopping...")
                         self.running = False
                         break
-
-                    if response.status_code != 200:
-                        await asyncio.sleep(3)
-                        continue
-
-                    data = response.json()
-                    consecutive_errors = 0
-                    task = data.get("task")
-
-                    if not task:
-                        continue
-
-                    task_id = task.get("task_id")
-                    tool_name = task.get("tool_name")
-                    params = task.get("parameters", {})
-
-                    print(f"⚡ [AI REQUEST] Tool: {tool_name} | Params: {params}")
-
-                    result = None
-                    error = None
-                    try:
-                        result = await self.execute_task(tool_name, params)
-                        print(f"✅ [SUCCESS] Finished {tool_name}")
                     except Exception as e:
-                        error = str(e)
-                        print(f"❌ [TOOL ERROR] {error}")
-
-                    await client.post(
-                        result_url,
-                        headers=self.headers,
-                        json={
-                            "task_id": task_id,
-                            "result": result,
-                            "error": error
-                        }
-                    )
-
-                except (httpx.ConnectError, httpx.TimeoutException):
-                    consecutive_errors += 1
-                    wait_time = min(10, 2 ** consecutive_errors)
-                    print(f"🔄 Connection to cloud relay interrupted. Retrying in {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                except asyncio.CancelledError:
-                    print("\n🛑 Local bridge stopping...")
-                    self.running = False
-                    break
-                except Exception as e:
-                    print(f"⚠️ Unexpected error: {str(e)}")
-                    await asyncio.sleep(2)
+                        print(f"⚠️ Unexpected error: {str(e)}")
+                        await asyncio.sleep(2)
+            finally:
+                keepalive_task.cancel()
 
 
 def handle_startup_installation(server: str, key: str, root_dir: str, uninstall: bool = False):
