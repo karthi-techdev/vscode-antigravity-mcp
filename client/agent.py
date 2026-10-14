@@ -8,6 +8,12 @@ from dotenv import load_dotenv
 
 from client.executor import LocalIDEExecutor
 
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 load_dotenv()
 
 
