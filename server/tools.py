@@ -43,7 +43,7 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
     # automatically route to the user's active local bridge!
     import time
     now = time.time()
-    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 60.0]
+    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 90.0]
     if active_users:
         return max(active_users, key=lambda u: relay_manager.client_heartbeats.get(u, 0))
 
