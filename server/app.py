@@ -87,7 +87,7 @@ async def get_bridge_script():
 
 
 
-@app.api_route("/mcp", methods=["GET", "POST"])
+@app.api_route("/mcp", methods=["GET", "POST"], include_in_schema=False)
 async def mcp_redirect(request: Request):
     """Redirect /mcp to /mcp/sse, preserving query parameters and method."""
     query = str(request.url.query)
@@ -97,7 +97,7 @@ async def mcp_redirect(request: Request):
     return RedirectResponse(url=target, status_code=307)
 
 
-@app.api_route("/sse", methods=["GET", "POST"])
+@app.api_route("/sse", methods=["GET", "POST"], include_in_schema=False)
 async def sse_redirect(request: Request):
     """Redirect /sse to /mcp/sse, preserving query parameters and method."""
     query = str(request.url.query)
@@ -120,7 +120,7 @@ async def get_user_status(current_user: str = Depends(get_current_user)):
     }
 
 
-@app.post("/api/relay/poll")
+@app.post("/api/relay/poll", include_in_schema=False)
 async def relay_poll(
     payload: PollRequest = Body(default_factory=PollRequest),
     current_user: str = Depends(get_current_user)
@@ -132,7 +132,7 @@ async def relay_poll(
     return {"task": task}
 
 
-@app.post("/api/relay/result")
+@app.post("/api/relay/result", include_in_schema=False)
 async def relay_result(
     submission: TaskResultSubmission,
     current_user: str = Depends(get_current_user)
@@ -153,14 +153,14 @@ async def relay_result(
     return {"status": "success", "task_id": submission.task_id}
 
 
-@app.post("/api/relay/heartbeat")
+@app.post("/api/relay/heartbeat", include_in_schema=False)
 async def relay_heartbeat(current_user: str = Depends(get_current_user)):
     """Keepalive ping for local IDE companion."""
     relay_manager.update_heartbeat(current_user)
     return {"status": "alive", "user_id": current_user}
 
 
-@app.post("/api/auth/generate-token")
+@app.post("/api/auth/generate-token", include_in_schema=False)
 async def generate_token(
     payload: GenerateTokenRequest,
     is_admin: bool = Depends(verify_admin_key)
@@ -174,7 +174,68 @@ async def generate_token(
     }
 
 
-@app.post("/api/tools/{tool_name}")
+class ProjectNamePayload(BaseModel):
+    project_name: str = ""
+
+class ReadFilePayload(BaseModel):
+    path: str
+    max_lines: Optional[int] = 500
+    start_line: Optional[int] = 1
+    project: Optional[str] = None
+
+class WriteFilePayload(BaseModel):
+    path: str
+    content: str
+    project: Optional[str] = None
+
+class EditFilePayload(BaseModel):
+    path: str
+    old_str: str
+    new_str: str
+    project: Optional[str] = None
+
+class CreateDirPayload(BaseModel):
+    path: str
+    project: Optional[str] = None
+
+class DeleteFilePayload(BaseModel):
+    path: str
+    recursive: Optional[bool] = False
+    project: Optional[str] = None
+
+class MoveFilePayload(BaseModel):
+    source_path: str
+    destination_path: str
+    overwrite: Optional[bool] = False
+    project: Optional[str] = None
+
+class FilePathPayload(BaseModel):
+    path: str
+    project: Optional[str] = None
+
+class ListDirPayload(BaseModel):
+    path: Optional[str] = "."
+    max_depth: Optional[int] = 2
+    project: Optional[str] = None
+
+class SearchFilesPayload(BaseModel):
+    query: str
+    path: Optional[str] = "."
+    file_pattern: Optional[str] = "*"
+    project: Optional[str] = None
+
+class CommandPayload(BaseModel):
+    command: str
+    timeout_seconds: Optional[int] = 60
+    project: Optional[str] = None
+
+class GitPayload(BaseModel):
+    subcommand: str
+    timeout_seconds: Optional[int] = 60
+    project: Optional[str] = None
+
+
+@app.post("/api/tools/{tool_name}", include_in_schema=False)
 async def execute_tool_direct(
     tool_name: str,
     parameters: Dict[str, Any] = Body(default_factory=dict),
@@ -193,3 +254,77 @@ async def execute_tool_direct(
         return {"status": "success", "tool": tool_name, "result": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# -------------------------------------------------------------------------
+# Explicit REST Action Endpoints for ChatGPT Web Custom Actions
+# -------------------------------------------------------------------------
+
+@app.post("/api/action/list_projects", summary="List all projects on user computer")
+async def action_list_projects(current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="list_projects", parameters={})
+
+@app.post("/api/action/set_active_project", summary="Switch active project context")
+async def action_set_active_project(payload: ProjectNamePayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="set_active_project", parameters=payload.model_dump())
+
+@app.post("/api/action/get_active_project", summary="Get active project status and path")
+async def action_get_active_project(current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="get_active_project", parameters={})
+
+@app.post("/api/action/get_workspace_context", summary="Get workspace overview and git status")
+async def action_get_workspace_context(current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="get_workspace_context", parameters={})
+
+@app.post("/api/action/read_workspace_file", summary="Read lines from a workspace file")
+async def action_read_file(payload: ReadFilePayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="read_workspace_file", parameters=payload.model_dump())
+
+@app.post("/api/action/write_workspace_file", summary="Create or overwrite a file")
+async def action_write_file(payload: WriteFilePayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="write_workspace_file", parameters=payload.model_dump())
+
+@app.post("/api/action/edit_workspace_file", summary="Replace text in a workspace file")
+async def action_edit_file(payload: EditFilePayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="edit_workspace_file", parameters=payload.model_dump())
+
+@app.post("/api/action/create_directory", summary="Create a new directory or folder")
+async def action_create_dir(payload: CreateDirPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="create_directory", parameters=payload.model_dump())
+
+@app.post("/api/action/delete_file", summary="Delete a file or directory")
+async def action_delete_file(payload: DeleteFilePayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="delete_file", parameters=payload.model_dump())
+
+@app.post("/api/action/move_or_rename_file", summary="Move or rename a file or directory")
+async def action_move_file(payload: MoveFilePayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="move_or_rename_file", parameters=payload.model_dump())
+
+@app.post("/api/action/get_file_info", summary="Get metadata, size, timestamps, and line count")
+async def action_get_file_info(payload: FilePathPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="get_file_info", parameters=payload.model_dump())
+
+@app.post("/api/action/list_workspace_directory", summary="List files and folders in directory")
+async def action_list_dir(payload: ListDirPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="list_workspace_directory", parameters=payload.model_dump())
+
+@app.post("/api/action/search_workspace_files", summary="Search text across files")
+async def action_search_files(payload: SearchFilesPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="search_workspace_files", parameters=payload.model_dump())
+
+@app.post("/api/action/run_powershell_command", summary="Execute PowerShell command or script")
+async def action_run_powershell(payload: CommandPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_powershell_command", parameters=payload.model_dump())
+
+@app.post("/api/action/run_cmd_command", summary="Execute Command Prompt cmd.exe command")
+async def action_run_cmd(payload: CommandPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_cmd_command", parameters=payload.model_dump())
+
+@app.post("/api/action/run_git_command", summary="Execute Git command")
+async def action_run_git(payload: GitPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_git_command", parameters=payload.model_dump())
+
+@app.post("/api/action/run_terminal_command", summary="Execute general terminal command")
+async def action_run_terminal(payload: CommandPayload, current_user: str = Depends(get_current_user)):
+    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_terminal_command", parameters=payload.model_dump())
+

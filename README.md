@@ -40,30 +40,29 @@ Cloud AI models (Gemini Web, ChatGPT) cannot directly reach into your computer b
 
 ---
 
-## 🌐 Connection Details (At a Glance)
+## 🌐 Web Connection Details (At a Glance)
 
-Connect any MCP-compatible AI client to your local workspace using these hosted endpoints:
+Connect any Web AI Chat in your browser to your local computer:
 
-| Parameter | Value |
-|---|---|
-| **Hosted Server URL** | `https://vscode-antigravity-mcp.vercel.app` |
-| **MCP SSE Endpoint** | `https://vscode-antigravity-mcp.vercel.app/mcp/sse` |
-| **Complete Connection URL** | `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY` |
-| **Auth Options** | Query Parameter (`?token=YOUR_SECRET_KEY`) or Header (`Authorization: Bearer YOUR_SECRET_KEY`) |
-| **Your Secret Key** | Any private passphrase you choose (e.g. `karthi_secure_2026`). **Zero server pre-registration required!** |
-| **Protocol** | Model Context Protocol (MCP) via Server-Sent Events (SSE) |
+| Parameter | Value | Notes |
+|---|---|---|
+| **Hosted Server URL** | `https://vscode-antigravity-mcp.vercel.app` | Base hosted gateway on Vercel |
+| **OpenAPI Schema URL** | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **For ChatGPT Web (Custom GPTs)** & Google AI Studio |
+| **MCP SSE Endpoint** | `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY` | **For Gemini Web, Claude Web & Web MCP extensions** |
+| **Authentication Type** | `Bearer` token or `?token=` query parameter | Zero pre-registration needed |
+| **Your Secret Key** | Any private passphrase you choose (e.g. `karthi_secret_99`) | Isolates your computer session completely |
 
 ---
 
-## ⚡ Step-by-Step Setup Guide (ZERO Git Cloning Required)
+## ⚡ 3-Step Setup (ZERO Git Cloning Required)
 
-You do **NOT** need to clone this repository. You only need the single [`bridge.py`](https://vscode-antigravity-mcp.vercel.app/bridge.py) helper file on your machine.
+You do **NOT** need to clone this repository. You only need the single [`bridge.py`](https://vscode-antigravity-mcp.vercel.app/bridge.py) file on your machine.
 
 ---
 
 ### Step 1: Download `bridge.py`
 
-Open your terminal in your root projects folder (e.g. `C:\projects` or `~/projects`) or any individual repository:
+Open your terminal in your root projects folder (e.g. `C:\projects` or `~/projects`) or any individual repo:
 
 #### Windows (PowerShell):
 ```powershell
@@ -77,17 +76,17 @@ curl -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
 
 ---
 
-### Step 2: Start the Local Bridge
+### Step 2: Start the Bridge on Your Computer
 
 Choose **any private key** you want (e.g. `--key "my_secret_key_123"`).
 
-#### 🌟 Option A: 1-Time Lifetime Install (Runs in the background on startup)
+#### 🌟 Option A: 1-Time Lifetime Install (Runs silently in background on startup)
 On Windows, run this **one time**:
 ```powershell
 python bridge.py --install-startup --key "YOUR_SECRET_KEY" --root "C:\projects"
 ```
 * **Silent & Automatic**: Starts in the background on every Windows boot.
-* No open terminal windows, no maintenance.
+* Permanent access to all projects under `C:\projects` from any browser.
 * *(To uninstall anytime: `python bridge.py --uninstall-startup`)*
 
 #### 💻 Option B: Run in Current Terminal
@@ -95,128 +94,94 @@ python bridge.py --install-startup --key "YOUR_SECRET_KEY" --root "C:\projects"
 python bridge.py --key "YOUR_SECRET_KEY" --root "C:\projects"
 ```
 
-Once started, the bridge securely connects outbound to the Vercel gateway and waits for commands.
+Once running, your local companion is ready to receive commands from your web browser!
 
 ---
 
-### Step 3: Connect Your AI Assistant
+### Step 3: Connect Your Web AI Assistant (Browser-Only)
 
-Choose your AI platform below and follow the quick setup steps:
-
-#### 🟣 Claude Desktop
-Claude Desktop connects to remote SSE MCP servers using `mcp-remote`.
-
-1. Open your Claude Desktop configuration file:
-   * **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-   * **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-2. Add the `antigravity-ide` server under `"mcpServers"`:
-   ```json
-   {
-     "mcpServers": {
-       "antigravity-ide": {
-         "command": "npx",
-         "args": [
-           "-y",
-           "mcp-remote",
-           "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY"
-         ]
-       }
-     }
-   }
-   ```
-3. Restart Claude Desktop. You will see a hammer icon 🔨 with all **17 IDE tools** ready to use!
+Choose whichever Web AI chat you use in your browser:
 
 ---
 
-#### 🟢 ChatGPT (Web & Custom GPTs)
-You can connect ChatGPT Plus / Team / Enterprise via **Custom GPT Actions** or browser MCP plugins:
+#### 🟢 1. ChatGPT Web (`chatgpt.com`)
+*No browser extensions required! Uses ChatGPT's official Custom GPT Actions.*
 
-##### Using Custom GPT Actions:
-1. Go to [chatgpt.com](https://chatgpt.com) ➔ **Explore GPTs** ➔ **Create a GPT**.
-2. Click **Configure** tab ➔ Scroll down and click **Create new action**.
-3. Under **Authentication**:
-   * **Authentication Type**: `API Key`
-   * **Auth Type**: `Bearer`
-   * **API Key**: Enter your `YOUR_SECRET_KEY`.
-4. Under **Import from URL / Schema**:
-   * Enter: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
-5. Save the GPT and start chatting!
+1. In your browser, open [chatgpt.com](https://chatgpt.com).
+2. In the left sidebar, click **Explore GPTs** ➔ click **+ Create** (top right).
+3. Select the **Configure** tab:
+   * **Name**: `My Local PC Assistant`
+   * **Instructions**:
+     ```
+     You are connected to my local computer. Use the available actions to explore my projects, read and edit files, and execute PowerShell and Git commands on my machine.
+     ```
+4. Scroll to the bottom and click **Create new action**:
+   * Under **Authentication**:
+     * **Authentication Type**: `API Key`
+     * **Auth Type**: `Bearer`
+     * **API Key**: Enter your `YOUR_SECRET_KEY`
+   * Under **Schema**:
+     * Click **Import from URL**
+     * Enter: `https://vscode-antigravity-mcp.vercel.app/openapi.json`
+     * Click **Import**
+   * *ChatGPT will immediately import all 17 actions (`list_projects`, `read_workspace_file`, `write_workspace_file`, `run_powershell_command`, `run_git_command`, etc.)!*
+5. Click **Create / Save** (top right) ➔ Select **Only me**.
+6. Open your new GPT in `chatgpt.com` and start chatting directly with your local computer!
 
-##### Using ChatGPT MCP Browser Connectors / Extensions:
-* **Server URL**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
-* **Transport**: `SSE`
-
----
-
-#### 🔵 Gemini Web & Google Antigravity IDE
-
-##### In Google Antigravity IDE:
-Add the remote MCP bridge to your global or workspace `mcp_config.json` (`~/.gemini/antigravity-ide/mcp_config.json`):
-```json
-{
-  "mcpServers": {
-    "antigravity-remote": {
-      "url": "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY"
-    }
-  }
-}
-```
-
-##### In Gemini Web (via MCP Web Extension):
-* **Endpoint**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
-* **Auth**: Pass your key in the `Authorization: Bearer YOUR_SECRET_KEY` header or query parameter.
+*(Or, if using a Chrome extension like "ChatGPT MCP Connector", simply paste `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY` into the extension settings).*
 
 ---
 
-#### 🟡 Cursor & VS Code (Cline, Roo Code, Continue.dev)
+#### 🔵 2. Gemini Web (`gemini.google.com` & Google AI Studio)
 
-##### In Cline / Roo Code (VS Code Extension):
-1. Click the **MCP Servers** (network plug) icon in the Cline/Roo Code sidebar.
-2. Click **Add New MCP Server** or open `cline_mcp_settings.json`:
-   ```json
-   {
-     "mcpServers": {
-       "antigravity-ide": {
-         "url": "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY",
-         "type": "sse"
-       }
-     }
-   }
-   ```
+##### A. Google AI Studio Web (`aistudio.google.com`) - Native Web Chat:
+1. Open [aistudio.google.com](https://aistudio.google.com) in your browser and start a new chat.
+2. In the right-hand panel under **Tools** ➔ enable **Function Calling**.
+3. Import the OpenAPI schema: `https://vscode-antigravity-mcp.vercel.app/openapi.json`.
+4. Add Header: `Authorization: Bearer YOUR_SECRET_KEY`.
+5. Now chat with Gemini 1.5 Pro in your browser — it invokes actions directly on your local computer!
 
-##### In Continue.dev (`~/.continue/config.json`):
-```json
-{
-  "mcpServers": [
-    {
-      "name": "antigravity-ide",
-      "url": "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY"
-    }
-  ]
-}
-```
+##### B. Gemini Web (`gemini.google.com`) - via Web MCP Extension:
+1. Install an MCP extension for Chrome/Edge (e.g., *Model Context Protocol for Web* or *MCP Browser Assistant*).
+2. In the extension settings:
+   * **MCP Server URL**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
+   * **Transport**: `SSE`
+3. Open `gemini.google.com` and ask Gemini to inspect or modify your projects!
 
 ---
 
-### Step 4: Chat and Control Your Workspace!
+#### 🟣 3. Claude Web (`claude.ai`)
+1. Open [claude.ai](https://claude.ai) in your browser.
+2. Using any Web MCP extension for Chrome/Edge:
+   * **Server URL**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
+   * **Transport**: `SSE`
+3. Claude Web can now discover and run all 17 IDE tools directly on your computer!
 
-Now simply ask your AI assistant naturally in the chat:
+---
 
-* **Discover & switch projects**:
-  > *"What projects do I have on my computer?"*
-  > *"Switch active project to `my-web-app`."*
+### Step 4: Start Chatting & Controlling Your Projects from the Browser!
+
+Once connected in your browser, ask your AI naturally in the chat window:
+
+* **Browse projects on your computer**:
+  > *"What projects do I have on my system?"*
+  > **AI**: *"Found 4 projects under `C:\projects`: `my-web-app`, `ai-bot`, `backend-api`, and `portfolio`."*
+
+* **Switch active project**:
+  > *"Switch active project to `my-web-app` and tell me what tech stack it uses."*
+  > **AI**: *"Switched active project to `my-web-app`. It's a React + Vite TypeScript project..."*
 
 * **Read & modify files**:
-  > *"Read `src/App.tsx` and explain how authentication is implemented."*
-  > *"Add a new modal component in `src/components/Modal.tsx`."*
+  > *"Read `src/App.tsx` and add a new dark mode toggle component."*
+  > **AI**: *"I've read `App.tsx` and modified the code to add the dark mode toggle."*
 
-* **Run Git commands**:
-  > *"Check git status and show me what changed in the last commit."*
-  > *"Create a new git branch called `feature/mcp-integration`."*
-
-* **Run PowerShell / CMD commands**:
+* **Run PowerShell & Terminal commands**:
   > *"Run `npm test` using PowerShell and tell me if all tests pass."*
-  > *"Execute `git log -n 3` and summarize recent work."*
+  > **AI**: *"Executing PowerShell command... All tests passed!"*
+
+* **Git Version Control**:
+  > *"Run `git status` and commit my changes with message 'feat: add dark mode'."*
+  > **AI**: *"Running `git status`... Changes staged and committed successfully."*
 
 ---
 
