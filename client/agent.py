@@ -2,11 +2,21 @@ import argparse
 import asyncio
 import os
 import sys
-import httpx
+from pathlib import Path
 from typing import Dict, Any, Optional
+
+import httpx
 from dotenv import load_dotenv
 
-from client.executor import LocalIDEExecutor
+# Ensure project root is in sys.path so client can be run from any workspace directory
+_root = Path(__file__).parent.parent.resolve()
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
+
+try:
+    from client.executor import LocalIDEExecutor
+except ImportError:
+    from executor import LocalIDEExecutor
 
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
