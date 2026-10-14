@@ -22,6 +22,6 @@ htmlcov/
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
+# Binaries
+cloudflared.exe
+

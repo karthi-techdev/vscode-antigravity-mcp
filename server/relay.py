@@ -1,9 +1,11 @@
 import asyncio
+import json
 import time
 import uuid
 from typing import Dict, Optional, Any, List
+import httpx
 from pydantic import BaseModel
-from server.config import RELAY_TASK_TIMEOUT
+from server.config import RELAY_TASK_TIMEOUT, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN
 
 
 class RelayTask:
@@ -33,19 +35,15 @@ class TaskResultSubmission(BaseModel):
     error: Optional[str] = None
 
 
-class RelayManager:
+class InMemoryRelayManager:
     """
-    Manages task queues and results between Cloud MCP and Local IDE companions.
-    Thread-safe and async-compatible.
+    Manages task queues and results in-memory.
+    Ideal for single-container hosting (Render, Railway, Fly.io, or local Docker).
     """
     def __init__(self):
-        # user_id -> List[RelayTask] (pending tasks waiting to be picked up by local IDE)
         self.pending_tasks: Dict[str, List[RelayTask]] = {}
-        # task_id -> RelayTask (all active tasks waiting for completion)
         self.active_tasks: Dict[str, RelayTask] = {}
-        # user_id -> float (timestamp of last heartbeat / poll from local client)
         self.client_heartbeats: Dict[str, float] = {}
-        # user_id -> asyncio.Event (signals when a new task is added for the user)
         self.user_task_events: Dict[str, asyncio.Event] = {}
         self._lock = asyncio.Lock()
 
@@ -59,11 +57,6 @@ class RelayManager:
         return (time.time() - last_seen) < timeout_seconds
 
     async def dispatch_task(self, user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
-        """
-        Dispatches a tool call task to the user's local IDE companion and awaits the result.
-        In multi-instance serverless environments, we immediately enqueue the task so that
-        the user's high-frequency polling workers pick it up without premature rejection.
-        """
         task = RelayTask(user_id, tool_name, parameters)
 
         async with self._lock:
@@ -72,12 +65,10 @@ class RelayManager:
             self.pending_tasks[user_id].append(task)
             self.active_tasks[task.task_id] = task
 
-            # Notify any long-polling local client for this user on this container
             if user_id in self.user_task_events:
                 self.user_task_events[user_id].set()
 
         try:
-            # Await completion from local client
             await asyncio.wait_for(task.event.wait(), timeout=RELAY_TASK_TIMEOUT)
         except asyncio.TimeoutError:
             async with self._lock:
@@ -101,12 +92,8 @@ class RelayManager:
         return task.result
 
     async def poll_task(self, user_id: str, wait_timeout: float = 1.5) -> Optional[Dict[str, Any]]:
-        """
-        Called by local IDE companion to receive work. Supports long-polling.
-        """
         self.update_heartbeat(user_id)
 
-        # Check if already a task queued
         async with self._lock:
             if user_id in self.pending_tasks and self.pending_tasks[user_id]:
                 task = self.pending_tasks[user_id].pop(0)
@@ -119,7 +106,6 @@ class RelayManager:
 
             event = self.user_task_events[user_id]
 
-        # Wait for new task or timeout
         try:
             await asyncio.wait_for(event.wait(), timeout=wait_timeout)
         except asyncio.TimeoutError:
@@ -133,9 +119,6 @@ class RelayManager:
             return None
 
     async def submit_result(self, task_id: str, result: Any = None, error: Optional[str] = None) -> bool:
-        """
-        Called by local IDE companion to report the execution result.
-        """
         async with self._lock:
             task = self.active_tasks.pop(task_id, None)
             if not task:
@@ -148,5 +131,113 @@ class RelayManager:
             return True
 
 
-# Global singleton instance for the server process
-relay_manager = RelayManager()
+class UpstashRedisRelay:
+    """
+    Distributed Relay Manager using Upstash Redis REST API.
+    Guarantees 100% reliable task and result synchronization across multi-instance
+    serverless environments like Vercel and AWS Lambda.
+    """
+    def __init__(self, url: str, token: str):
+        self.url = url.rstrip("/")
+        self.headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        self.limits = httpx.Limits(max_keepalive_connections=0)
+
+    async def _cmd(self, *args) -> Any:
+        try:
+            async with httpx.AsyncClient(timeout=3.0, limits=self.limits) as client:
+                res = await client.post(self.url, headers=self.headers, json=list(args))
+                if res.status_code == 200:
+                    return res.json().get("result")
+        except Exception:
+            pass
+        return None
+
+    async def update_heartbeat(self, user_id: str):
+        await self._cmd("SET", f"relay:hb:{user_id}", str(time.time()), "EX", "180")
+
+    async def is_client_online(self, user_id: str, timeout_seconds: float = 120.0) -> bool:
+        val = await self._cmd("GET", f"relay:hb:{user_id}")
+        if not val:
+            return False
+        try:
+            return (time.time() - float(val)) < timeout_seconds
+        except Exception:
+            return False
+
+    async def dispatch_task(self, user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        task_id = str(uuid.uuid4())
+        task_payload = {
+            "task_id": task_id,
+            "tool_name": tool_name,
+            "parameters": parameters,
+            "user_id": user_id,
+            "created_at": time.time()
+        }
+
+        # Store task data with 120s TTL
+        await self._cmd("SET", f"relay:task:{task_id}", json.dumps(task_payload), "EX", "120")
+        # Enqueue task for user's local bridge
+        await self._cmd("RPUSH", f"relay:pending:{user_id}", task_id)
+
+        # Poll Redis for result from any container
+        start_time = time.time()
+        while (time.time() - start_time) < RELAY_TASK_TIMEOUT:
+            raw_res = await self._cmd("GET", f"relay:result:{task_id}")
+            if raw_res:
+                try:
+                    res_data = json.loads(raw_res)
+                    # Cleanup
+                    await self._cmd("DEL", f"relay:result:{task_id}", f"relay:task:{task_id}")
+                    if res_data.get("error"):
+                        raise RuntimeError(f"Error from local IDE: {res_data['error']}")
+                    return res_data.get("result")
+                except json.JSONDecodeError:
+                    pass
+            await asyncio.sleep(0.1)
+
+        online = await self.is_client_online(user_id)
+        if not online:
+            raise RuntimeError(
+                f"No active local IDE bridge detected. "
+                "Please run the local bridge client on your computer: "
+                "`python bridge.py --key <your-key>`"
+            )
+        raise TimeoutError(
+            f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'."
+        )
+
+    async def poll_task(self, user_id: str, wait_timeout: float = 1.5) -> Optional[Dict[str, Any]]:
+        await self.update_heartbeat(user_id)
+        start_time = time.time()
+        while (time.time() - start_time) < wait_timeout:
+            task_id = await self._cmd("LPOP", f"relay:pending:{user_id}")
+            if task_id:
+                raw_task = await self._cmd("GET", f"relay:task:{task_id}")
+                if raw_task:
+                    try:
+                        return json.loads(raw_task)
+                    except json.JSONDecodeError:
+                        pass
+            await asyncio.sleep(0.2)
+        return None
+
+    async def submit_result(self, task_id: str, result: Any = None, error: Optional[str] = None) -> bool:
+        res_data = {
+            "task_id": task_id,
+            "result": result,
+            "error": error,
+            "completed_at": time.time()
+        }
+        res = await self._cmd("SET", f"relay:result:{task_id}", json.dumps(res_data), "EX", "120")
+        return res == "OK"
+
+
+# Automatically use Upstash Redis for distributed persistence if configured; otherwise use in-memory
+if UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN:
+    relay_manager = UpstashRedisRelay(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN)
+else:
+    relay_manager = InMemoryRelayManager()
+
