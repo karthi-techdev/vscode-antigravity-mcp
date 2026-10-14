@@ -56,9 +56,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Probe & rewrite middleware: responds with 200 OK JSON to GET/HEAD probes on /mcp and avoids 307 redirects on POST
+# Probe & rewrite middleware: routes /mcp, /mcp/sse, and /sse without 404s or redirects
 @app.middleware("http")
 async def mcp_probe_middleware(request: Request, call_next):
+    # Route SSE endpoints seamlessly whether client requests /mcp/sse, /sse, or /sse/sse
+    if request.url.path in ("/mcp/sse", "/mcp/sse/"):
+        request.scope["path"] = "/sse/sse"
+        return await call_next(request)
+    if request.url.path in ("/sse", "/sse/"):
+        request.scope["path"] = "/sse/sse"
+        return await call_next(request)
+    if request.url.path.startswith("/mcp/messages"):
+        request.scope["path"] = request.url.path.replace("/mcp/messages", "/sse/messages")
+        return await call_next(request)
+
+    # Route StreamableHTTP endpoints seamlessly on /mcp
     if request.url.path in ("/mcp", "/mcp/"):
         if request.method in ("GET", "HEAD"):
             return JSONResponse({
