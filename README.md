@@ -21,7 +21,7 @@ Cloud AI models (ChatGPT, Claude Web, Gemini Web) cannot reach into your compute
 │       Web AI Assistant               │
 │   (ChatGPT / Claude / Gemini)        │
 └──────────────────┬───────────────────┘
-                   │ 1. Tool Call + Your Token
+                   │ 1. Tool Call + Your Private Token
                    ▼
 ┌────────────────────────────────────────────────────────┐
 │ Cloud MCP Gateway (Hosted on Vercel)                   │
@@ -42,7 +42,102 @@ Cloud AI models (ChatGPT, Claude Web, Gemini Web) cannot reach into your compute
 
 ---
 
-## 🌐 Web AI Connection Details
+## 🚀 3-Step Setup Guide (ZERO Git Cloning Required)
+
+You do **NOT** need to clone this GitHub repository to connect your computer. You only need the single standalone [`bridge.py`](https://vscode-antigravity-mcp.vercel.app/bridge.py) script.
+
+---
+
+### Step 1: Download `bridge.py` Globally
+
+Open your terminal in your root projects directory (for example `C:\projects` on Windows or `~/projects` on macOS/Linux), and download the single bridge file:
+
+#### Windows (PowerShell or Command Prompt):
+```powershell
+curl.exe -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
+```
+
+#### macOS / Linux:
+```bash
+curl -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
+```
+
+*(You can place this single `bridge.py` file anywhere on your computer — no additional project files or repositories needed.)*
+
+---
+
+### Step 2: Set Your Token & Projects Folder Path
+
+Configure your bridge with your private authentication token and the parent directory containing your code repositories. Using the `--save` flag saves these settings globally so you only have to do this once:
+
+```bash
+python bridge.py --save --root "C:\projects" --key "YOUR_SECRET_KEY"
+```
+
+* **`--root`**: The folder containing all your projects (e.g. `C:\projects` or `/Users/username/projects`). Your Web AI will be able to navigate and work across any project inside this folder.
+* **`--key`**: Your private auth token (e.g. `D4_PROJECT_MCP_SERVER` or any custom secret key).
+* **`--save`**: Saves this configuration globally to `~/.universal_ide_bridge.json`.
+
+#### Verify Your Saved Configuration Anytime:
+```bash
+python bridge.py --show-config
+```
+Output:
+```text
+📁 Current Saved Global Bridge Configuration:
+   Config file: C:\Users\Admin\.universal_ide_bridge.json
+   Server:      https://vscode-antigravity-mcp.vercel.app
+   Root:        C:\projects
+   Token:       YOUR_SECRET_KEY
+```
+
+---
+
+### Step 3: Run the Bridge (On-Demand Like `npm run dev`)
+
+Whenever you want to use the AI assistant with your local code, run:
+
+```bash
+python bridge.py
+```
+*(Or if installed globally, simply run `ide-bridge` or `mcp-bridge`)*
+
+#### What Happens When You Run It:
+1. **Interactive Console**: Launches an active developer session with live status streaming.
+2. **Real-Time Debug Logs**: Every time Claude, ChatGPT, or Gemini executes a tool, the parameters, execution time (in ms), and output preview are printed in real-time.
+3. **Stop Anytime**: Press `Ctrl+C` in your terminal to cleanly disconnect and stop the bridge.
+
+```text
+╔════════════════════════════════════════════════════════════════════════════╗
+║              🚀 Universal IDE Bridge (On-Demand Dev Session)               ║
+╚════════════════════════════════════════════════════════════════════════════╝
+📁 Projects Root:    C:\projects
+🎯 Active Workspace: C:\projects\my-app
+🌐 Cloud Gateway:    https://vscode-antigravity-mcp.vercel.app
+🔑 Auth Token:       YOUR_SEC..._KEY
+🟢 Status:           ACTIVE & LISTENING (Press Ctrl+C to stop)
+────────────────────────────────────────────────────────────────────────
+💡 Ready! When Claude, ChatGPT, or Gemini Web calls a tool, logs will stream below:
+
+[21:30:15] 💚 Gateway heartbeat confirmed (latency: 38ms) | Status: Healthy
+
+──────────────────────────────────────────────────────────────────────
+⚡ [21:30:28] INCOMING AI REQUEST: get_active_project
+📦 Parameters: {}
+📁 Target Project: my-app (C:\projects\my-app)
+⚙️ Executing local action...
+✅ Local execution completed successfully in 5.8ms
+📊 Result: {"projects_root": "C:\\projects", "active_project": "my-app", "git_branch": "main"}
+🚀 Delivered result to AI assistant in 12ms (attempt 1)
+──────────────────────────────────────────────────────────────────────
+
+🛑 Bridge session stopped by user (Ctrl+C). Clean shutdown complete.
+👋 Goodbye!
+```
+
+---
+
+## 🌐 Web AI Connection Details (At a Glance)
 
 Connect any Web AI Chat in your browser to your local computer:
 
@@ -58,68 +153,7 @@ Connect any Web AI Chat in your browser to your local computer:
 
 ---
 
-## ⚡ Quick Start: Running the Bridge On-Demand
-
-The bridge is designed as an **interactive, on-demand developer console session** (just like running `npm run dev`). You start it when you need it, observe live real-time debug logs of all AI actions, and stop it anytime with `Ctrl+C`.
-
-### Option 1: Quick Launcher (One-Click)
-Double-click [`start_bridge.bat`](file:///c:/projects/vscode-antigravity-mcp/start_bridge.bat) in the project folder.
-
-### Option 2: Run via CLI (Any Terminal)
-```bash
-python bridge.py
-```
-*(Or use `bridge` / `ide-bridge` / `mcp-bridge` globally from any folder)*
-
-### Option 3: Specify Your Projects Root & Auth Token
-```bash
-python bridge.py --root "C:\projects" --key "YOUR_SECRET_KEY"
-```
-
-### Option 4: Save Global Defaults
-Save your preferred projects directory and token once:
-```bash
-python bridge.py --save --root "C:\projects" --key "YOUR_SECRET_KEY"
-```
-Once saved to `~/.universal_ide_bridge.json`, you can simply run `python bridge.py` or `ide-bridge` without any extra flags.
-
----
-
-## 📊 Live Real-Time Console Logging
-
-When the bridge is running, it streams clear, timestamped diagnostic logs for every operation:
-
-```text
-╔════════════════════════════════════════════════════════════════════════════╗
-║              🚀 Universal IDE Bridge (On-Demand Dev Session)               ║
-╚════════════════════════════════════════════════════════════════════════════╝
-📁 Projects Root:    C:\projects
-🎯 Active Workspace: C:\projects\vscode-antigravity-mcp
-🌐 Cloud Gateway:    https://vscode-antigravity-mcp.vercel.app
-🔑 Auth Token:       D4_PROJE...RVER
-🟢 Status:           ACTIVE & LISTENING (Press Ctrl+C to stop)
-────────────────────────────────────────────────────────────────────────
-💡 Ready! When Claude, ChatGPT, or Gemini Web calls a tool, logs will stream below:
-
-[21:30:15] 💚 Gateway heartbeat confirmed (latency: 38ms) | Status: Healthy
-
-──────────────────────────────────────────────────────────────────────
-⚡ [21:30:28] INCOMING AI REQUEST: get_active_project
-📦 Parameters: {}
-📁 Target Project: vscode-antigravity-mcp (C:\projects\vscode-antigravity-mcp)
-⚙️ Executing local action...
-✅ Local execution completed successfully in 5.8ms
-📊 Result: {"projects_root": "C:\\projects", "active_project": "vscode-antigravity-mcp", "git_branch": "main"}
-🚀 Delivered result to AI assistant in 12ms (attempt 1)
-──────────────────────────────────────────────────────────────────────
-
-🛑 Bridge session stopped by user (Ctrl+C). Clean shutdown complete.
-👋 Goodbye!
-```
-
----
-
-## 💻 Connecting Your Web AI Assistant
+## 💻 Browser AI Setup Walkthrough
 
 ### 🟣 1. Claude Web (`claude.ai` Custom Connectors)
 1. Open **[claude.ai](https://claude.ai)** in your browser.
