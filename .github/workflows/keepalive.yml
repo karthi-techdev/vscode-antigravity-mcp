@@ -1,0 +1,14 @@
+name: Keepalive Vercel Health Check
+
+on:
+  schedule:
+    # Run every 5 minutes (GitHub Actions minimum schedule interval)
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Health Endpoint
+        run: curl -s -f https://vscode-antigravity-mcp.vercel.app/health || exit 0
