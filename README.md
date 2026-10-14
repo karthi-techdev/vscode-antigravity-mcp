@@ -1,4 +1,7 @@
+![alt text](image.png)
+
 # Universal Local IDE & Workspace MCP Bridge 🚀
+
 
 > Connect Web AI assistants (**ChatGPT, Claude Web, Gemini Web**) directly and securely to **ANY local IDE or developer workspace** (**VS Code, Cursor, Windsurf, JetBrains / IntelliJ / PyCharm, Antigravity, Zed, Neovim, Terminal**) — with multi-user isolation, zero open ports, and live interactive terminal logs.
 
