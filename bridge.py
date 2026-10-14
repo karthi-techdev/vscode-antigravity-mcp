@@ -770,13 +770,13 @@ class LocalBridgeAgent:
                     except Exception:
                         await asyncio.sleep(0.15)
 
-            except (httpx.ConnectError, httpx.TimeoutException):
+            except httpx.HTTPError:
                 consecutive_errors += 1
                 wait_time = min(5, 2 ** min(consecutive_errors, 2))
                 await asyncio.sleep(wait_time)
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except Exception:
                 await asyncio.sleep(0.5)
 
     async def run(self):
@@ -801,7 +801,7 @@ class LocalBridgeAgent:
                 for i in range(3)
             ]
             try:
-                await asyncio.gather(*workers)
+                await asyncio.gather(*workers, return_exceptions=True)
             except asyncio.CancelledError:
                 pass
             finally:
