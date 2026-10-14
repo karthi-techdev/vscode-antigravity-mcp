@@ -590,6 +590,13 @@ class LocalIDEExecutor:
         return self.get_active_project()
 
 
+def get_user_mesh_topic(token: str) -> str:
+    """Derives a deterministic, unguessable mesh topic matching the gateway."""
+    if not token.startswith("user_"):
+        token = f"user_{hashlib.sha256(token.encode('utf-8')).hexdigest()[:16]}"
+    return f"mcp_task_{token}"
+
+
 class LocalBridgeAgent:
     def __init__(self, server_url: str, auth_token: str, workspace_dir: str = ".", projects_root: Optional[str] = None):
         self.server_url = server_url.rstrip("/")
@@ -601,8 +608,7 @@ class LocalBridgeAgent:
             "Content-Type": "application/json",
             "Connection": "close"
         }
-        self.user_hash = hashlib.sha256(self.auth_token.encode()).hexdigest()[:16]
-        self.mesh_task_topic = f"mcp_task_{self.user_hash}"
+        self.mesh_task_topic = get_user_mesh_topic(self.auth_token)
         self.seen_task_ids = set()
         self.task_lock = asyncio.Lock()
         self.running = False

@@ -36,6 +36,13 @@ class TaskResultSubmission(BaseModel):
     error: Optional[str] = None
 
 
+def get_user_mesh_topic(user_id: str) -> str:
+    """Derives a deterministic, unguessable mesh topic for cross-container synchronization."""
+    if not user_id.startswith("user_"):
+        user_id = f"user_{hashlib.sha256(user_id.encode('utf-8')).hexdigest()[:16]}"
+    return f"mcp_task_{user_id}"
+
+
 class InMemoryRelayManager:
     """
     Manages task queues and results in-memory.
@@ -61,8 +68,7 @@ class InMemoryRelayManager:
 
     async def dispatch_task(self, user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
         task = RelayTask(user_id, tool_name, parameters)
-        user_hash = hashlib.sha256(user_id.encode()).hexdigest()[:16]
-        task_topic = f"mcp_task_{user_hash}"
+        task_topic = get_user_mesh_topic(user_id)
         res_topic = f"mcp_res_{task.task_id}"
 
         async with self._lock:
@@ -94,7 +100,7 @@ class InMemoryRelayManager:
             while (time.time() - t0) < (RELAY_TASK_TIMEOUT - 0.5) and not task.event.is_set():
                 try:
                     async with httpx.AsyncClient(timeout=RELAY_TASK_TIMEOUT, limits=limits) as m_client:
-                        async with m_client.stream("GET", f"https://ntfy.sh/{res_topic}/json") as resp:
+                        async with m_client.stream("GET", f"https://ntfy.sh/{res_topic}/json?since=10s") as resp:
                             async for line in resp.aiter_lines():
                                 if not line.strip() or task.event.is_set():
                                     continue
