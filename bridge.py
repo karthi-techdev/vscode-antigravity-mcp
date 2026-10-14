@@ -756,24 +756,26 @@ class LocalBridgeAgent:
                     error = str(e)
                     print(f"❌ [TOOL ERROR] {error}")
 
-                # Ensure result is submitted back to the waiting Vercel instance with retry
-                for attempt in range(20):
+                # Retry submitting result for up to 26 seconds across Vercel serverless containers
+                res_start = time.time()
+                attempt = 0
+                while (time.time() - res_start) < 26.0:
+                    attempt += 1
                     try:
-                        res = await client.post(
-                            result_url,
-                            headers=self.headers,
-                            json={"task_id": task_id, "result": result, "error": error},
-                            timeout=5.0
-                        )
-                        if res.status_code == 200:
-                            print(f"🚀 [RESULT DELIVERED] attempt {attempt + 1}")
-                            break
-                        else:
-                            print(f"⏳ [RESULT RETRY] attempt {attempt + 1}: status {res.status_code}")
-                        await asyncio.sleep(0.2)
+                        async with httpx.AsyncClient(timeout=4.0, limits=httpx.Limits(max_keepalive_connections=0)) as res_client:
+                            res = await res_client.post(
+                                result_url,
+                                headers=self.headers,
+                                json={"task_id": task_id, "result": result, "error": error}
+                            )
+                            if res.status_code == 200:
+                                print(f"🚀 [RESULT DELIVERED] in {round(time.time() - res_start, 2)}s (attempt {attempt})")
+                                break
+                            elif attempt % 6 == 0:
+                                print(f"⏳ [RESULT RETRY] attempt {attempt}: waiting for container (status {res.status_code})")
                     except Exception as e:
-                        print(f"⚠️ [RESULT RETRY EXCEPTION] attempt {attempt + 1}: {e}")
-                        await asyncio.sleep(0.2)
+                        pass
+                    await asyncio.sleep(0.25)
 
             except httpx.HTTPError:
                 consecutive_errors += 1
