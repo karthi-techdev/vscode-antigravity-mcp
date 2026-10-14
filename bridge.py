@@ -616,7 +616,9 @@ class LocalBridgeAgent:
                 await asyncio.sleep(60)
                 if not self.running:
                     break
-                await client.get(health_url, headers=self.headers, timeout=10.0)
+                r = await client.get(health_url, headers=self.headers, timeout=10.0)
+                if r.status_code == 200:
+                    print(f"💓 [{datetime.now().strftime('%H:%M:%S')}] Keepalive: Pinned /health to keep Vercel alive.")
             except Exception:
                 pass
 
