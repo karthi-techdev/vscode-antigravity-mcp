@@ -31,6 +31,7 @@ STATIC_TOKENS = parse_auth_tokens(AUTH_TOKENS_RAW)
 # Relay timeout in seconds (how long MCP tool call waits for local IDE client response)
 RELAY_TASK_TIMEOUT = int(os.getenv("RELAY_TASK_TIMEOUT", "30"))
 
-# Upstash Redis settings (optional for multi-instance serverless Vercel persistence)
-UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "")
-UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
+# Upstash Redis / Vercel KV settings (for multi-instance serverless Vercel persistence)
+UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL") or os.getenv("KV_REST_API_URL", "")
+UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN") or os.getenv("KV_REST_API_TOKEN", "")
+
