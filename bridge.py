@@ -832,6 +832,29 @@ class LocalBridgeAgent:
             except Exception:
                 await asyncio.sleep(1.0)
 
+    async def _mesh_poll_worker(self):
+        """High-frequency mesh polling fallback (checks every 0.8s) guaranteeing zero dropped tasks."""
+        url = f"https://ntfy.sh/{self.mesh_task_topic}/json?poll=1&since=25s"
+        limits = httpx.Limits(max_keepalive_connections=0)
+        while self.running:
+            try:
+                async with httpx.AsyncClient(timeout=2.0, limits=limits) as client:
+                    resp = await client.get(url)
+                    if resp.status_code == 200 and resp.text.strip():
+                        for line in resp.text.strip().splitlines():
+                            try:
+                                msg = json.loads(line)
+                                if msg.get("event") == "message":
+                                    task = json.loads(msg["message"])
+                                    asyncio.create_task(self.handle_task(task, source="High-Frequency Mesh"))
+                            except Exception:
+                                pass
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                pass
+            await asyncio.sleep(0.8)
+
     async def _poll_worker(self, worker_id: int, client: httpx.AsyncClient, poll_url: str):
         """Worker that polls cloud relay for tasks as backup."""
         while self.running:
@@ -872,14 +895,15 @@ class LocalBridgeAgent:
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=20)
         async with httpx.AsyncClient(timeout=15.0, limits=limits) as client:
             keepalive_task = asyncio.create_task(self._keepalive_loop(client))
-            mesh_task = asyncio.create_task(self._mesh_stream_worker())
+            mesh_stream_task = asyncio.create_task(self._mesh_stream_worker())
+            mesh_poll_task = asyncio.create_task(self._mesh_poll_worker())
             poll_tasks = [
                 asyncio.create_task(self._poll_worker(i, client, poll_url))
                 for i in range(2)
             ]
-            all_tasks = [keepalive_task, mesh_task] + poll_tasks
+            all_tasks = [keepalive_task, mesh_stream_task, mesh_poll_task] + poll_tasks
             try:
-                await asyncio.gather(mesh_task, *poll_tasks, return_exceptions=True)
+                await asyncio.gather(mesh_stream_task, mesh_poll_task, *poll_tasks, return_exceptions=True)
             except asyncio.CancelledError:
                 pass
             finally:

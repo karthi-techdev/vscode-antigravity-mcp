@@ -83,40 +83,34 @@ class InMemoryRelayManager:
         # Instantly publish task to distributed mesh so local bridge receives it within 100ms
         task_payload = task.to_dict()
         task_payload["user_id"] = user_id
-        async def _publish_task():
-            limits = httpx.Limits(max_keepalive_connections=0)
-            try:
-                async with httpx.AsyncClient(timeout=3.0, limits=limits) as p_client:
-                    await p_client.post(f"https://ntfy.sh/{task_topic}", data=json.dumps(task_payload))
-            except Exception:
-                pass
+        limits = httpx.Limits(max_keepalive_connections=0)
+        try:
+            async with httpx.AsyncClient(timeout=3.0, limits=limits) as p_client:
+                await p_client.post(f"https://ntfy.sh/{task_topic}", data=json.dumps(task_payload))
+        except Exception:
+            pass
 
-        asyncio.create_task(_publish_task())
-
-        # Listen for result via distributed mesh stream across ephemeral Vercel containers
+        # Listen for result via distributed mesh fast poll across ephemeral Vercel containers
         async def _mesh_listener():
-            limits = httpx.Limits(max_keepalive_connections=0)
+            res_url = f"https://ntfy.sh/{res_topic}/json?poll=1&since=30s"
             t0 = time.time()
             while (time.time() - t0) < (RELAY_TASK_TIMEOUT - 0.5) and not task.event.is_set():
                 try:
-                    async with httpx.AsyncClient(timeout=RELAY_TASK_TIMEOUT, limits=limits) as m_client:
-                        async with m_client.stream("GET", f"https://ntfy.sh/{res_topic}/json?since=10s") as resp:
-                            async for line in resp.aiter_lines():
-                                if not line.strip() or task.event.is_set():
-                                    continue
-                                try:
-                                    data = json.loads(line)
-                                    if data.get("event") == "message":
-                                        payload = json.loads(data["message"])
-                                        task.result = payload.get("result")
-                                        task.error = payload.get("error")
-                                        task.completed_at = time.time()
-                                        task.event.set()
-                                        return
-                                except Exception:
-                                    pass
+                    async with httpx.AsyncClient(timeout=2.0, limits=limits) as m_client:
+                        m_res = await m_client.get(res_url)
+                        if m_res.status_code == 200 and m_res.text.strip():
+                            for line in m_res.text.strip().splitlines():
+                                data = json.loads(line)
+                                if data.get("event") == "message":
+                                    payload = json.loads(data["message"])
+                                    task.result = payload.get("result")
+                                    task.error = payload.get("error")
+                                    task.completed_at = time.time()
+                                    task.event.set()
+                                    return
                 except Exception:
-                    await asyncio.sleep(0.2)
+                    pass
+                await asyncio.sleep(0.2)
 
         mesh_worker = asyncio.create_task(_mesh_listener())
 
