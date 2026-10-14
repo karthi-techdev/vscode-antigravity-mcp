@@ -154,6 +154,78 @@ def register_tools(mcp: FastMCP):
         )
 
     @mcp.tool(
+        name="create_directory",
+        description="Create a new directory (and any necessary parent directories) in the workspace or specified project."
+    )
+    async def create_directory(
+        path: str,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="create_directory",
+            parameters={"path": path, "project": project}
+        )
+
+    @mcp.tool(
+        name="delete_file",
+        description="Delete a file or directory inside the workspace or specified project. Set recursive=True to delete a non-empty directory."
+    )
+    async def delete_file(
+        path: str,
+        recursive: bool = False,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="delete_file",
+            parameters={"path": path, "recursive": recursive, "project": project}
+        )
+
+    @mcp.tool(
+        name="move_or_rename_file",
+        description="Move or rename a file or directory within the workspace or specified project."
+    )
+    async def move_or_rename_file(
+        source_path: str,
+        destination_path: str,
+        overwrite: bool = False,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="move_or_rename_file",
+            parameters={
+                "source_path": source_path,
+                "destination_path": destination_path,
+                "overwrite": overwrite,
+                "project": project
+            }
+        )
+
+    @mcp.tool(
+        name="get_file_info",
+        description="Get detailed metadata, size, timestamps, and line count for a file or directory."
+    )
+    async def get_file_info(
+        path: str,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="get_file_info",
+            parameters={"path": path, "project": project}
+        )
+
+    @mcp.tool(
         name="list_workspace_directory",
         description="List files and directories in the user's workspace or specified project."
     )

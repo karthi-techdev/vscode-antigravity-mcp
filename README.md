@@ -102,23 +102,40 @@ Once connected, you can manage all your projects directly in your chat:
 
 ---
 
-## 🛠️ Complete Tools Reference
+## 🛠️ Complete Tools Reference (17 Tools)
 
+### 📂 Multi-Project & Workspace Navigation
 | Tool | Description |
 |---|---|
-| `list_projects()` | Discovers and lists all project folders, detected tech stacks, and Git branches. |
-| `set_active_project(name)` | Switches the active project context to a different folder on your computer. |
+| `list_projects()` | Discovers and lists all project folders, detected tech stacks, and Git branches across your system. |
+| `set_active_project(project_name)` | Switches active project context to a different folder on your machine. |
 | `get_active_project()` | Inspects current active project name, workspace path, and Git status. |
-| `read_workspace_file(path)` | Reads lines or full contents of any file in your project. |
-| `write_workspace_file(path, content)` | Creates or replaces files in your workspace. |
-| `edit_workspace_file(path, old, new)` | Finds and replaces specific code blocks in a file. |
-| `list_workspace_directory(path)` | Explores directories and inspects the file tree. |
-| `search_workspace_files(query)` | Searches for text, classes, or symbols across your codebase. |
-| `run_terminal_command(command)` | Runs a general shell command in the project. |
-| `run_powershell_command(command)` | Executes a native PowerShell command/script with full environment and UTF-8 support. |
-| `run_cmd_command(command)` | Executes a Command Prompt (cmd.exe) command or batch script. |
-| `run_git_command(subcommand)` | Executes Git operations (e.g. `status`, `diff`, `log`, `branch`, `commit`, `pull`). |
-| `get_workspace_context()` | Queries Git branch, status, and modified files. |
+| `get_workspace_context()` | Queries overview of active workspace, Git branch, and working changes. |
+
+### 📝 File & Directory Operations
+| Tool | Description |
+|---|---|
+| `read_workspace_file(path, [max_lines], [start_line], [project])` | Reads lines or full contents of any file with line numbering. |
+| `write_workspace_file(path, content, [project])` | Creates or replaces files in your workspace. |
+| `edit_workspace_file(path, old_str, new_str, [project])` | Finds and replaces specific code blocks in a file. |
+| `create_directory(path, [project])` | Creates a new directory (and any necessary parent directories). |
+| `delete_file(path, [recursive], [project])` | Deletes a file or directory (with `recursive=True` for directories). |
+| `move_or_rename_file(source_path, destination_path, [overwrite], [project])` | Moves or renames files and directories cleanly. |
+| `get_file_info(path, [project])` | Inspects file size, line count, permissions, extension, and timestamps. |
+| `list_workspace_directory(path, [max_depth], [project])` | Explores directories and inspects the file tree. |
+
+### 🔍 Code Search
+| Tool | Description |
+|---|---|
+| `search_workspace_files(query, [path], [file_pattern], [project])` | Fast regex/text search for functions, classes, or symbols across your codebase. |
+
+### 💻 Terminals & Version Control
+| Tool | Description |
+|---|---|
+| `run_powershell_command(command, [timeout_seconds], [project])` | Native PowerShell command or script execution with full UTF-8 encoding support. |
+| `run_cmd_command(command, [timeout_seconds], [project])` | Windows Command Prompt (`cmd.exe`) command and batch script execution. |
+| `run_git_command(subcommand, [timeout_seconds], [project])` | Direct Git operations (`status`, `diff`, `log`, `branch`, `commit`, `push`, `pull`, etc.). |
+| `run_terminal_command(command, [timeout_seconds], [project])` | Default system terminal command execution with configurable timeout. |
 
 ---
 

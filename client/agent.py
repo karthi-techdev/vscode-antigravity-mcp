@@ -73,6 +73,29 @@ class LocalBridgeAgent:
                 new_str=p.get("new_str", ""),
                 project=p.get("project")
             )
+        elif tool_name in ("create_directory", "create_workspace_directory", "mkdir"):
+            return self.executor.create_directory(
+                path=p.get("path", ""),
+                project=p.get("project")
+            )
+        elif tool_name in ("delete_file", "delete_workspace_file", "remove_file"):
+            return self.executor.delete_file(
+                path=p.get("path", ""),
+                recursive=p.get("recursive", False),
+                project=p.get("project")
+            )
+        elif tool_name in ("move_or_rename_file", "move_file", "rename_file", "move_workspace_file"):
+            return self.executor.move_or_rename_file(
+                source_path=p.get("source_path", ""),
+                destination_path=p.get("destination_path", ""),
+                overwrite=p.get("overwrite", False),
+                project=p.get("project")
+            )
+        elif tool_name in ("get_file_info", "file_info", "get_workspace_file_info"):
+            return self.executor.get_file_info(
+                path=p.get("path", ""),
+                project=p.get("project")
+            )
         elif tool_name in ("list_workspace_directory", "list_directory"):
             return self.executor.list_directory(
                 path=p.get("path", "."),

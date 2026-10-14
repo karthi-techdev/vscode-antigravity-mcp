@@ -2,6 +2,8 @@ import os
 import sys
 import subprocess
 import fnmatch
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -253,6 +255,135 @@ class LocalIDEExecutor:
             "full_path": str(target),
             "project": project or self.active_project,
             "replacements_made": count
+        }
+
+    def create_directory(self, path: str, project: Optional[str] = None) -> Dict[str, Any]:
+        """Create a new directory (and any necessary parent directories) in the workspace."""
+        target = self._resolve_safe_path(path, project=project)
+        base_dir = (self.projects_root / project).resolve() if project else self.current_workspace_path
+        target.mkdir(parents=True, exist_ok=True)
+        return {
+            "status": "success",
+            "path": str(target.relative_to(base_dir)) if target != base_dir else ".",
+            "full_path": str(target),
+            "project": project or self.active_project,
+            "message": f"Directory created successfully: {path}"
+        }
+
+    def delete_file(self, path: str, recursive: bool = False, project: Optional[str] = None) -> Dict[str, Any]:
+        """Delete a file or directory inside the workspace or specified project."""
+        target = self._resolve_safe_path(path, project=project)
+        base_dir = (self.projects_root / project).resolve() if project else self.current_workspace_path
+
+        if target == self.projects_root or target == base_dir:
+            raise PermissionError("Deleting the project root or workspace root is not permitted.")
+
+        if not target.exists():
+            raise FileNotFoundError(f"File or directory not found: {path}")
+
+        rel_path = str(target.relative_to(base_dir))
+        full_path = str(target)
+
+        if target.is_dir():
+            if recursive:
+                shutil.rmtree(target)
+            else:
+                try:
+                    target.rmdir()
+                except OSError:
+                    raise OSError(f"Directory is not empty: '{path}'. Set recursive=True to delete directory and all contents.")
+            item_type = "directory"
+        else:
+            target.unlink()
+            item_type = "file"
+
+        return {
+            "status": "success",
+            "path": rel_path,
+            "full_path": full_path,
+            "project": project or self.active_project,
+            "type": item_type,
+            "message": f"Successfully deleted {item_type}: {path}"
+        }
+
+    def move_or_rename_file(self, source_path: str, destination_path: str, overwrite: bool = False, project: Optional[str] = None) -> Dict[str, Any]:
+        """Move or rename a file or directory within the workspace or specified project."""
+        src = self._resolve_safe_path(source_path, project=project)
+        dest = self._resolve_safe_path(destination_path, project=project)
+        base_dir = (self.projects_root / project).resolve() if project else self.current_workspace_path
+
+        if not src.exists():
+            raise FileNotFoundError(f"Source file or directory does not exist: {source_path}")
+
+        if src == dest:
+            return {
+                "status": "noop",
+                "message": "Source and destination are identical.",
+                "path": str(src.relative_to(base_dir)),
+                "full_path": str(src),
+                "project": project or self.active_project
+            }
+
+        if dest.exists():
+            if not overwrite:
+                raise FileExistsError(f"Destination already exists: '{destination_path}'. Set overwrite=True to replace it.")
+            if dest.is_dir():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(dest))
+
+        return {
+            "status": "success",
+            "source_path": str(src.relative_to(base_dir)),
+            "destination_path": str(dest.relative_to(base_dir)),
+            "full_destination_path": str(dest),
+            "project": project or self.active_project,
+            "message": f"Successfully moved '{source_path}' to '{destination_path}'"
+        }
+
+    def get_file_info(self, path: str, project: Optional[str] = None) -> Dict[str, Any]:
+        """Get detailed metadata, size, timestamps, and line count for a file or directory."""
+        target = self._resolve_safe_path(path, project=project)
+        base_dir = (self.projects_root / project).resolve() if project else self.current_workspace_path
+
+        if not target.exists():
+            return {
+                "exists": False,
+                "path": path,
+                "full_path": str(target),
+                "project": project or self.active_project
+            }
+
+        stat = target.stat()
+        is_file = target.is_file()
+        is_dir = target.is_dir()
+        size_bytes = stat.st_size
+
+        line_count = None
+        if is_file and size_bytes < 10_000_000:
+            try:
+                with open(target, "r", encoding="utf-8", errors="ignore") as f:
+                    line_count = sum(1 for _ in f)
+            except Exception:
+                pass
+
+        created_time = datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat()
+        modified_time = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+
+        return {
+            "exists": True,
+            "path": str(target.relative_to(base_dir)) if target != base_dir else ".",
+            "full_path": str(target),
+            "project": project or self.active_project,
+            "type": "file" if is_file else ("directory" if is_dir else "other"),
+            "size_bytes": size_bytes,
+            "line_count": line_count,
+            "extension": target.suffix if is_file else "",
+            "modified_time": modified_time,
+            "created_time": created_time
         }
 
     def list_directory(self, path: str = ".", max_depth: int = 2, project: Optional[str] = None) -> Dict[str, Any]:
