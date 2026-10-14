@@ -24,9 +24,26 @@ def generate_user_token(user_id: str) -> str:
     return token
 
 
+import hashlib
+
 def verify_token(token: str) -> Optional[str]:
-    """Verify if token exists and return associated user_id."""
-    return DYNAMIC_TOKENS.get(token)
+    """
+    Verify token and return associated user_id.
+    - If pre-configured in DYNAMIC_TOKENS, returns assigned username.
+    - If dynamic key provided by any user (min 6 characters), automatically
+      creates an isolated, collision-free user session.
+    """
+    if not token or len(token.strip()) < 6:
+        return None
+
+    token = token.strip()
+    if token in DYNAMIC_TOKENS:
+        return DYNAMIC_TOKENS[token]
+
+    # Dynamically derive a stable, isolated user session from the secret key
+    derived_user = f"user_{hashlib.sha256(token.encode('utf-8')).hexdigest()[:16]}"
+    DYNAMIC_TOKENS[token] = derived_user
+    return derived_user
 
 
 async def get_token_from_request(
