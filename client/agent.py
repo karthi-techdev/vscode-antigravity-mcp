@@ -38,7 +38,8 @@ class LocalBridgeAgent:
         self.headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "User-Agent": "Universal-IDE-Bridge/1.0",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Connection": "close"
         }
         self.running = False
 
@@ -180,11 +181,12 @@ class LocalBridgeAgent:
         poll_url = f"{self.server_url}/api/relay/poll"
         result_url = f"{self.server_url}/api/relay/result"
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        limits = httpx.Limits(max_keepalive_connections=0, max_connections=20)
+        async with httpx.AsyncClient(timeout=15.0, limits=limits) as client:
             keepalive_task = asyncio.create_task(self._keepalive_loop(client))
             workers = [
                 asyncio.create_task(self._poll_worker(i, client, poll_url, result_url))
-                for i in range(3)
+                for i in range(4)
             ]
             try:
                 await asyncio.gather(*workers, return_exceptions=True)

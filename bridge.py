@@ -595,7 +595,8 @@ class LocalBridgeAgent:
         self.headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "User-Agent": "Universal-IDE-Bridge/1.0",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Connection": "close"
         }
         self.running = False
 
@@ -756,19 +757,23 @@ class LocalBridgeAgent:
                     print(f"❌ [TOOL ERROR] {error}")
 
                 # Ensure result is submitted back to the waiting Vercel instance with retry
-                for attempt in range(8):
+                for attempt in range(20):
                     try:
                         res = await client.post(
                             result_url,
                             headers=self.headers,
                             json={"task_id": task_id, "result": result, "error": error},
-                            timeout=8.0
+                            timeout=5.0
                         )
                         if res.status_code == 200:
+                            print(f"🚀 [RESULT DELIVERED] attempt {attempt + 1}")
                             break
-                        await asyncio.sleep(0.12)
-                    except Exception:
-                        await asyncio.sleep(0.15)
+                        else:
+                            print(f"⏳ [RESULT RETRY] attempt {attempt + 1}: status {res.status_code}")
+                        await asyncio.sleep(0.2)
+                    except Exception as e:
+                        print(f"⚠️ [RESULT RETRY EXCEPTION] attempt {attempt + 1}: {e}")
+                        await asyncio.sleep(0.2)
 
             except httpx.HTTPError:
                 consecutive_errors += 1
@@ -794,11 +799,12 @@ class LocalBridgeAgent:
         poll_url = f"{self.server_url}/api/relay/poll"
         result_url = f"{self.server_url}/api/relay/result"
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        limits = httpx.Limits(max_keepalive_connections=0, max_connections=20)
+        async with httpx.AsyncClient(timeout=15.0, limits=limits) as client:
             keepalive_task = asyncio.create_task(self._keepalive_loop(client))
             workers = [
                 asyncio.create_task(self._poll_worker(i, client, poll_url, result_url))
-                for i in range(3)
+                for i in range(4)
             ]
             try:
                 await asyncio.gather(*workers, return_exceptions=True)
