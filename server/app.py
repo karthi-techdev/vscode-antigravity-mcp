@@ -1,7 +1,8 @@
 import time
 from typing import Dict, Any, Optional
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, status, Body, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastmcp import FastMCP
@@ -72,6 +73,18 @@ async def root():
 async def health_check():
     """Health check for uptime monitors and container orchestrators."""
     return {"status": "ok", "timestamp": time.time()}
+
+
+@app.get("/bridge.py")
+async def get_bridge_script():
+    """Serves the standalone local bridge runner so users can download it with zero git cloning."""
+    bridge_file = Path(__file__).parent.parent / "bridge.py"
+    if not bridge_file.exists():
+        raise HTTPException(status_code=404, detail="bridge.py not found")
+    with open(bridge_file, "r", encoding="utf-8") as f:
+        content = f.read()
+    return PlainTextResponse(content, media_type="text/x-python")
+
 
 
 @app.api_route("/mcp", methods=["GET", "POST"])

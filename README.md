@@ -1,183 +1,171 @@
 # Antigravity Multi-Tenant IDE MCP Bridge 🚀
 
-> Connect Web-based AI assistants (**ChatGPT, Gemini Web, Claude, Antigravity**) directly and securely to local IDEs (**VS Code, Antigravity IDE**) with multi-user authentication, ready to deploy to **Vercel**.
+> Connect Web AI assistants (**Gemini Web, ChatGPT, Claude**) directly and securely to your local IDE (**VS Code, Antigravity IDE**) — with multi-user isolation, zero open ports, and hosted on **Vercel**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-Protocol-purple.svg)](https://modelcontextprotocol.io)
 [![FastMCP](https://img.shields.io/badge/FastMCP-v4.1.0-green.svg)](https://github.com/jlowin/fastmcp)
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/karthi-techdev/vscode-antigravity-mcp)
 
 ---
 
-## 💡 Overview
+## 💡 How It Works
 
-Web-based AI interfaces (like ChatGPT web with Custom GPTs/MCP, or Gemini Web) run in the cloud and cannot directly reach into your local machine through firewalls and NAT routers.
+Cloud AI models (Gemini Web, ChatGPT) cannot directly reach into your computer because of firewalls and Wi-Fi routers (NAT). 
 
-**Antigravity Multi-Tenant IDE MCP Bridge** solves this with a secure cloud relay architecture:
-1. **Cloud Gateway (FastMCP / FastAPI)**: Hosted on Vercel or any cloud provider. Provides MCP SSE (`/mcp/sse`) and REST endpoints.
-2. **Local Bridge Companion (`client.agent`)**: A lightweight Python CLI running locally on the user's machine in their IDE workspace. Dials *out* to the cloud relay. No port forwarding or public IP required.
-3. **Multi-Tenant Token Isolation**: Each user gets a private token. When User A speaks to Gemini or ChatGPT, commands and file operations execute **exclusively** on User A's workspace.
-
----
-
-## 🏗️ Architecture
+**Antigravity MCP Bridge** creates a secure outbound tunnel between your local project and the cloud:
 
 ```
-┌─────────────────────────────────┐
-│ Web AI (ChatGPT / Gemini Web)   │
-└────────────────┬────────────────┘
-                 │ 1. Tool Call + Bearer Token
-                 ▼
+┌──────────────────────────────────────┐
+│       Web AI Assistant               │
+│   (Gemini Web / ChatGPT / Claude)    │
+└──────────────────┬───────────────────┘
+                   │ 1. Tool Call + Your Token
+                   ▼
 ┌────────────────────────────────────────────────────────┐
-│ Cloud MCP Gateway (Vercel Serverless / FastMCP)        │
-│ - Validates user token & isolates session              │
-│ - Enqueues tool action for User's IDE                  │
-└────────────────┬───────────────────────────────────────┘
-                 │ 2. Long-polling / Relay Channel
-                 │    (Outbound from user's PC)
-┌────────────────┴───────────────────────────────────────┐
-│ Local IDE Bridge (VS Code / Antigravity Workspace)    │
-│ - Sandboxed Workspace File Ops                         │
-│ - Terminal Execution                                   │
-│ - Workspace Search & Git Context                       │
+│ Cloud MCP Gateway (Hosted on Vercel)                   │
+│ - Authenticates your private token                     │
+│ - Routes tasks exclusively to your computer            │
+└──────────────────▲─────────────────────────────────────┘
+                   │ 2. Outbound polling (Zero inbound ports!)
+                   │    Works behind any Wi-Fi or firewall
+┌──────────────────┴─────────────────────────────────────┐
+│ Your Local Computer (Any Project Workspace)            │
+│ - Reads/edits files in your project                    │
+│ - Runs builds, tests, or lints in terminal             │
+│ - Sandboxed strictly to your chosen folder             │
 └────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## ✨ Features
+## 🚀 Quickstart for End-Users (ZERO Git Cloning Required)
 
-- **Multi-Tenant Isolation**: Supports multiple users on a single hosted deployment. User requests are routed only to their specific paired machine.
-- **Vercel Serverless Ready**: Uses an ASGI adapter (`mangum` / native ASGI) compatible with Vercel serverless functions.
-- **Zero Inbound Ports**: Local machines connect outbound to the cloud relay. Works behind any firewall, VPN, or home NAT.
-- **Workspace Sandboxing**: Path traversal protection prevents AI from accessing directories outside the designated workspace.
-- **Dual Support**:
-  - **Standard MCP SSE**: Connects to Claude, Gemini, Antigravity, and MCP clients (`/mcp/sse`).
-  - **Direct REST API**: Works seamlessly with ChatGPT Custom GPT Actions (`/api/tools/{tool_name}`).
+If you are a developer who just wants to connect your local project to Gemini Web or ChatGPT using an existing hosted bridge, **you do NOT need to clone this repository!**
+
+### Step 1: Download the Bridge into your project
+
+Open your terminal in **whatever project you want the AI to work on** (e.g. `C:\my-cool-app`), and run:
+
+#### Windows (PowerShell):
+```powershell
+curl.exe -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
+```
+
+#### macOS / Linux:
+```bash
+curl -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
+```
 
 ---
 
-## 🛠️ Tools Provided to the AI
+### Step 2: Start the Bridge
 
-| Tool | Description |
+Run `bridge.py` with your personal token and the server URL:
+
+```bash
+python bridge.py --key "YOUR_USER_TOKEN" --server "https://vscode-antigravity-mcp.vercel.app"
+```
+
+You will see:
+```text
+============================================================
+🚀 Antigravity IDE Bridge Connected
+📁 Workspace:   /path/to/your/project
+🌐 Cloud Relay: https://vscode-antigravity-mcp.vercel.app
+============================================================
+Waiting for AI commands from Gemini / ChatGPT in browser...
+```
+*(Leave this terminal tab open in the background while you chat with your AI).*
+
+---
+
+### Step 3: Connect to Gemini Web or ChatGPT
+
+#### In Gemini Web:
+1. Open [Gemini](https://gemini.google.com/) -> **Settings** -> **Connected Apps** -> **Connect to an MCP server**.
+2. **MCP server URL**:
+   ```text
+   https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_USER_TOKEN
+   ```
+3. Leave **Client ID** and **Client secret** blank.
+4. Click **Next**!
+
+#### In ChatGPT (Custom GPT Actions):
+1. In your Custom GPT -> **Actions** -> **Import from URL**:
+   ```text
+   https://vscode-antigravity-mcp.vercel.app/openapi.json
+   ```
+2. Set Authentication to **Bearer** and paste `YOUR_USER_TOKEN`.
+
+---
+
+## 🛠️ Tools Given to the AI
+
+Once connected, your AI assistant can invoke these tools in real-time on your computer:
+
+| Tool | What It Does |
 |---|---|
-| `read_workspace_file` | Read lines or entire contents of a workspace file. |
-| `write_workspace_file` | Create or replace a file in the workspace. |
-| `edit_workspace_file` | Replace specific code/text snippets within a file. |
-| `list_workspace_directory` | Explore directories and inspect file tree structures. |
-| `search_workspace_files` | Search for text or symbols across workspace files. |
-| `run_terminal_command` | Execute commands (tests, builds, lints) in the workspace. |
-| `get_workspace_context` | Query current Git branch, status, and repository state. |
+| `read_workspace_file(path)` | Reads lines or full contents of any file in your project. |
+| `write_workspace_file(path, content)` | Creates or replaces files in your workspace. |
+| `edit_workspace_file(path, old, new)` | Finds and replaces specific code blocks in a file. |
+| `list_workspace_directory(path)` | Explores directories and inspects the file tree. |
+| `search_workspace_files(query)` | Searches for text, classes, or symbols across your codebase. |
+| `run_terminal_command(command)` | Runs commands (tests, builds, lints) in your project. |
+| `get_workspace_context()` | Queries Git branch, status, and modified files. |
 
 ---
 
-## 🚀 Quickstart Guide
+## ☁️ For Admins: Self-Hosting on Vercel
 
-### 1. Setup Local Environment
+If you want to host your own private or company-wide MCP Gateway:
 
-```bash
-# Clone the repository
-git clone https://github.com/your-username/vscode-antigravity-mcp.git
-cd vscode-antigravity-mcp
+### 1. Click Deploy
+Click the button below to fork and deploy directly to Vercel for free:
 
-# Create virtual environment
-python -m venv .venv
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/karthi-techdev/vscode-antigravity-mcp)
 
-# Activate virtual environment
-# Windows:
-.venv\Scripts\activate
-# Linux/macOS:
-source .venv/bin/activate
+### 2. Configure Environment Variables in Vercel
+During setup (or in Vercel **Settings ➔ Environment Variables**), add:
 
-# Install dependencies
-pip install -r requirements.txt
-```
+| Variable | Description | Example |
+|---|---|---|
+| `AUTH_TOKENS` | Comma-separated list of `token:user_id` pairs | `secret_alice:alice,secret_bob:bob` |
+| `ADMIN_SECRET_KEY` | Secret password for admin API endpoints | `my_super_secret_admin_password` |
 
-### 2. Configure Environment
-
-Copy `.env.example` to `.env`:
-
-```bash
-cp .env.example .env
-```
-
-Generate user pairing tokens with the helper script:
-
-```bash
-python scripts/register_user.py alice
-```
-
-Add the generated token to `AUTH_TOKENS` in your `.env` file:
-```env
-AUTH_TOKENS="your_generated_token:alice"
-```
-
-### 3. Run Locally (Dev Mode)
-
-Start the cloud gateway locally:
-```bash
-python scripts/start_server.py
-```
-Server runs at `http://localhost:8000`.
-
-In another terminal, start the local bridge inside your project workspace:
-```bash
-python -m client.agent --key "your_generated_token" --server "http://localhost:8000" --dir "."
+### 3. Generate New User Tokens Anytime
+You can generate tokens anytime locally with the helper script:
+```powershell
+python scripts/register_user.py <username>
 ```
 
 ---
 
-## ☁️ Deploying to Vercel
+## 🔒 Security & Privacy
 
-1. Push your repository to GitHub.
-2. Import the repository in [Vercel](https://vercel.com).
-3. In Project Settings -> **Environment Variables**, add:
-   - `AUTH_TOKENS`: e.g. `your_token:user1,another_token:user2`
-   - `ADMIN_SECRET_KEY`: A strong secret for admin token generation.
-4. Deploy! Your Vercel domain will be live (e.g. `https://your-mcp.vercel.app`).
+* **Sandbox Scoping**: The bridge enforces strict directory boundaries. Any attempt by the AI to access files outside your chosen project directory (`../../etc/passwd` or `C:\Windows`) is blocked with a `PermissionError`.
+* **Zero Inbound Ports**: Your computer never opens an open port to the public internet. It only dials outward via HTTPS long-polling.
+* **Multi-Tenant Isolation**: Tool requests are routed strictly based on the token. User A's AI cannot see or execute actions on User B's machine.
 
 ---
 
-## 🤖 Connecting to Web AI Assistants
+## ❓ Frequently Asked Questions (FAQ)
 
-### A. ChatGPT (Custom GPTs / Actions)
-1. Go to **ChatGPT** -> **Explore GPTs** -> **Create a GPT**.
-2. Under **Actions**, click **Create new action**.
-3. Import the OpenAPI schema from `https://your-mcp.vercel.app/openapi.json`.
-4. Under **Authentication**, select **Bearer** and paste your user token.
+### 1. Do other developers need to clone this repository?
+**No.** Other developers only need the single [`bridge.py`](https://vscode-antigravity-mcp.vercel.app/bridge.py) file. They run it inside their own project folder and connect immediately.
 
-### B. Gemini Web / Claude / Antigravity (MCP SSE)
-Configure your MCP client with:
-- **Server Type**: SSE
-- **URL**: `https://your-mcp.vercel.app/mcp/sse?token=YOUR_USER_TOKEN`
-- **Headers**:
-  ```json
-  {
-    "Authorization": "Bearer YOUR_USER_TOKEN"
-  }
-  ```
-
----
-
-## 🧪 Running Tests
-
-The test suite validates security sandboxing, local executor operations, and the full asynchronous relay cycle:
-
-```bash
-pytest -v tests
+### 2. What if I switch to another project on my computer?
+Simply run `bridge.py` inside that other project's folder:
+```powershell
+python bridge.py --key "YOUR_KEY" --server "https://your-server.vercel.app" --dir "."
 ```
 
----
-
-## 🔒 Security & Sandboxing
-
-- **Path Boundaries**: File operations resolve paths relative to the designated workspace directory. Attempts to escape via `../` raise `PermissionError`.
-- **Token Protection**: All relay polling and tool invocations require a valid pre-shared or generated token.
-- **Non-Destructive Defaults**: Commands run within execution timeouts to prevent hung processes.
+### 3. Can I run commands in the terminal?
+Yes, tools like `run_terminal_command` execute commands directly in your workspace with configurable timeouts to prevent hanging.
 
 ---
 
 ## 📄 License
 
-MIT License. Open-source for personal and commercial use.
+MIT License. Open-source and free for both personal and commercial use.
