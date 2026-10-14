@@ -21,7 +21,6 @@ htmlcov/
 .idea/
 *.swp
 *.swo
-
-# Binaries
-cloudflared.exe
-
+# OS
+.DS_Store
+Thumbs.db

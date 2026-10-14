@@ -884,25 +884,6 @@ def save_config(server: str, key: str, root: str):
         print(f"⚠️ Could not save settings: {e}")
 
 
-def run_direct_mode(projects_root: str, port: int = 8000):
-    """Launches local FastMCP server + Cloudflare Tunnel for direct, zero-relay connection."""
-    direct_script = Path(__file__).parent / "direct_mcp.py"
-    if not direct_script.exists():
-        print(f"❌ Error: direct_mcp.py not found at {direct_script}")
-        return
-
-    cmd = [sys.executable, "-u", str(direct_script), "--root", projects_root, "--port", str(port)]
-    try:
-        proc = subprocess.Popen(cmd)
-        proc.wait()
-    except KeyboardInterrupt:
-        print("\n🛑 Direct MCP session stopped by user (Ctrl+C). Goodbye!")
-        try:
-            proc.terminate()
-        except Exception:
-            pass
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Universal IDE Bridge - On-Demand Local Developer Session",
@@ -913,7 +894,6 @@ Examples:
   bridge --root "C:\\projects"           Run specifying projects root directory
   bridge --key "MY_TOKEN"               Run specifying your auth token
   bridge --save --root "C:\\projects"    Save root & token as global defaults
-  bridge --direct                       Run high-speed direct Cloudflare tunnel mode
 """
     )
     saved = load_saved_config()
@@ -926,7 +906,6 @@ Examples:
     parser.add_argument("--key", "-k", "--token", dest="key", default=default_key, help="User Auth Token")
     parser.add_argument("--dir", default=".", help="Initial project/workspace directory (default: current directory)")
     parser.add_argument("--root", "-r", default=default_root, help=f"Parent directory of all projects (default: {default_root})")
-    parser.add_argument("--direct", "-d", action="store_true", help="Run direct local FastMCP server with Cloudflare tunnel (bypasses Vercel)")
     parser.add_argument("--save", action="store_true", help="Save the provided --root, --key, and --server as global defaults")
     parser.add_argument("--show-config", action="store_true", help="Display saved global configuration")
 
@@ -942,11 +921,6 @@ Examples:
 
     if args.save:
         save_config(args.server, args.key, args.root)
-
-    # Direct tunnel mode (Zero Vercel middleman)
-    if args.direct:
-        run_direct_mode(projects_root=args.root)
-        return
 
     # Standard interactive on-demand bridge session
     agent = LocalBridgeAgent(
