@@ -262,91 +262,49 @@ class LocalBridgeAgent:
                 await asyncio.sleep(0.5)
 
 
-def handle_startup_installation(server: str, key: str, root_dir: str, uninstall: bool = False):
-    """Installs or uninstalls the bridge in Windows Startup."""
-    if sys.platform != "win32":
-        print("Startup service auto-installer is currently supported on Windows.")
-        return
+CONFIG_FILE = Path.home() / ".universal_ide_bridge.json"
 
-    startup_dir = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs/Startup"
-    if not startup_dir.exists():
-        print(f"❌ Windows Startup directory not found at {startup_dir}")
-        return
 
-    vbs_path = startup_dir / "UniversalIDEGlobalBridge.vbs"
-    legacy_vbs = startup_dir / "AntigravityGlobalBridge.vbs"
-
-    if uninstall:
-        removed = False
-        for path in (vbs_path, legacy_vbs):
-            if path.exists():
-                path.unlink()
-                removed = True
-        if removed:
-            print("✅ Removed Universal IDE Global Bridge from Windows Startup.")
-        else:
-            print("Notice: Universal IDE Global Bridge was not installed in Startup.")
-        return
-
-    if legacy_vbs.exists():
-        legacy_vbs.unlink()
-
-    python_exe = sys.executable
-    script_path = Path(__file__).resolve()
-
-    vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """{python_exe}"" ""{script_path}"" --server ""{server}"" --key ""{key}"" --root ""{root_dir}""", 0, False
-'''
-    with open(vbs_path, "w", encoding="utf-8") as f:
-        f.write(vbs_content)
-
-    print(f"\n=======================================================")
-    print(f"🎉 Universal IDE Global Bridge successfully installed!")
-    print(f"📁 Root: {root_dir}")
-    print(f"📍 Location: {vbs_path}")
-    print(f"⚡ It will now run silently in the background on every Windows boot.")
-    print(f"=======================================================\n")
+def load_saved_config() -> dict:
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Universal IDE Global Multi-Project Bridge")
-    parser.add_argument("--server", default=os.getenv("MCP_SERVER_URL", "https://vscode-antigravity-mcp.vercel.app"), help="Cloud MCP Server URL")
-    parser.add_argument("--key", default=os.getenv("MCP_AUTH_TOKEN", ""), help="User Auth Token")
+    parser = argparse.ArgumentParser(description="Universal IDE Global Multi-Project Bridge (On-Demand Session)")
+    saved = load_saved_config()
+
+    default_server = saved.get("server") or os.getenv("MCP_SERVER_URL", "https://vscode-antigravity-mcp.vercel.app")
+    default_key = saved.get("key") or os.getenv("MCP_AUTH_TOKEN", "D4_PROJECT_MCP_SERVER")
+    default_root = saved.get("root") or os.getenv("MCP_PROJECTS_ROOT", "C:\\projects" if Path("C:\\projects").exists() else ".")
+
+    parser.add_argument("--server", "-s", default=default_server, help=f"Cloud MCP Server URL (default: {default_server})")
+    parser.add_argument("--key", "-k", "--token", dest="key", default=default_key, help="User Auth Token")
     parser.add_argument("--dir", default=os.getenv("MCP_WORKSPACE_DIR", "."), help="Path to initial workspace or project")
-    parser.add_argument("--root", default=os.getenv("MCP_PROJECTS_ROOT", None), help="Parent directory containing all projects (e.g. C:\\projects)")
-    parser.add_argument("--install-startup", action="store_true", help="Install bridge to run silently in the background on Windows startup")
-    parser.add_argument("--uninstall-startup", action="store_true", help="Remove bridge from Windows startup")
+    parser.add_argument("--root", "-r", default=default_root, help=f"Parent directory containing all projects (default: {default_root})")
 
     args = parser.parse_args()
 
-    if args.install_startup or args.uninstall_startup:
-        if not args.key and not args.uninstall_startup:
-            print("❌ Error: --key is required to install in Startup.")
-            sys.exit(1)
-        root = args.root or str(Path(args.dir).resolve().parent if Path(args.dir).name != "projects" else Path(args.dir).resolve())
-        handle_startup_installation(args.server, args.key, root, uninstall=args.uninstall_startup)
-        return
+    agent = LocalBridgeAgent(
+        server_url=args.server,
+        auth_token=args.key,
+        workspace_dir=args.dir,
+        projects_root=args.root
+    )
 
-    if not args.key:
-        print("❌ Error: Authentication token is required.")
-        print("Specify --key <your-token> or set MCP_AUTH_TOKEN in environment / .env file.")
-        sys.exit(1)
-
-    while True:
-        try:
-            agent = LocalBridgeAgent(
-                server_url=args.server,
-                auth_token=args.key,
-                workspace_dir=args.dir,
-                projects_root=args.root
-            )
-            asyncio.run(agent.run())
-        except KeyboardInterrupt:
-            print("\n👋 Disconnected by user.")
-            break
-        except Exception as e:
-            print(f"⚠️ Bridge connection interrupted ({e}). Auto-reconnecting in 3 seconds...")
-            time.sleep(3)
+    try:
+        asyncio.run(agent.run())
+    except KeyboardInterrupt:
+        print("\n" + "─" * 70)
+        print("🛑 Bridge session stopped by user (Ctrl+C). Clean shutdown complete.")
+        print("👋 Goodbye!\n")
+    except Exception as e:
+        print(f"\n❌ Bridge stopped with error: {e}")
 
 
 if __name__ == "__main__":

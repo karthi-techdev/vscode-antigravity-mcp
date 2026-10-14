@@ -9,7 +9,9 @@ No git cloning required.
 import argparse
 import asyncio
 import fnmatch
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -709,28 +711,38 @@ class LocalBridgeAgent:
         """Runs the tool in an asynchronous worker thread to prevent blocking the event loop."""
         return await asyncio.to_thread(self._execute_sync, tool_name, parameters)
 
+    def _log(self, msg: str, symbol: str = "ℹ️"):
+        now = datetime.now().strftime("%H:%M:%S")
+        print(f"[{now}] {symbol} {msg}", flush=True)
+
     async def _keepalive_loop(self, client: httpx.AsyncClient):
-        """Pings both /health and /api/relay/heartbeat every 20 seconds to keep serverless containers active and warm."""
+        """Pings both /health and /api/relay/heartbeat every 25 seconds with latency measurement."""
         health_url = f"{self.server_url}/health"
         heartbeat_url = f"{self.server_url}/api/relay/heartbeat"
         while self.running:
             try:
-                await asyncio.sleep(20)
+                await asyncio.sleep(25)
                 if not self.running:
                     break
+                t0 = time.time()
                 await client.get(health_url, timeout=5.0)
-                await client.post(heartbeat_url, headers=self.headers, timeout=5.0)
-            except Exception:
-                pass
+                res = await client.post(heartbeat_url, headers=self.headers, timeout=5.0)
+                latency = round((time.time() - t0) * 1000, 1)
+                if res.status_code == 200:
+                    self._log(f"Gateway heartbeat confirmed (latency: {latency}ms) | Status: Healthy", "💚")
+                else:
+                    self._log(f"Heartbeat responded with status {res.status_code}", "⚠️")
+            except Exception as e:
+                self._log(f"Heartbeat ping missed: {e}", "⚠️")
 
     async def _poll_worker(self, worker_id: int, client: httpx.AsyncClient, poll_url: str, result_url: str):
-        """Worker that polls cloud relay for tasks and submits results with retry."""
+        """Worker that polls cloud relay for tasks and submits results with real-time debug logging."""
         consecutive_errors = 0
         while self.running:
             try:
                 response = await client.post(poll_url, headers=self.headers, json={"wait_timeout": 1.5})
                 if response.status_code == 401:
-                    print("❌ Auth error: Token rejected by server. Exiting.")
+                    self._log("Authentication failed: Auth token rejected by gateway. Exiting.", "❌")
                     self.running = False
                     break
                 if response.status_code != 200:
@@ -747,19 +759,34 @@ class LocalBridgeAgent:
                 tool_name = task.get("tool_name")
                 params = task.get("parameters", {})
 
-                print(f"⚡ [AI REQUEST] {tool_name} -> {params}")
+                # Rich real-time debug log banner for incoming request
+                now_str = datetime.now().strftime("%H:%M:%S")
+                print("\n" + "─" * 70, flush=True)
+                print(f"⚡ [{now_str}] INCOMING AI REQUEST: {tool_name}", flush=True)
+                print(f"📦 Parameters: {json.dumps(params, ensure_ascii=False)}", flush=True)
+                print(f"📁 Target Project: {self.executor.active_project or 'Default Root'} ({self.executor.current_workspace_path})", flush=True)
+                print(f"⚙️ Executing local action...", flush=True)
+
+                t0 = time.time()
                 result, error = None, None
                 try:
                     result = await self.execute_task(tool_name, params)
-                    print(f"✅ [SUCCESS] {tool_name}")
+                    exec_ms = round((time.time() - t0) * 1000, 1)
+                    print(f"✅ Local execution completed successfully in {exec_ms}ms", flush=True)
+                    preview = str(result)
+                    if len(preview) > 220:
+                        preview = preview[:220] + "... [truncated]"
+                    print(f"📊 Result: {preview}", flush=True)
                 except Exception as e:
                     error = str(e)
-                    print(f"❌ [TOOL ERROR] {error}")
+                    exec_ms = round((time.time() - t0) * 1000, 1)
+                    print(f"❌ Local execution failed after {exec_ms}ms: {error}", flush=True)
 
-                # Retry submitting result for up to 26 seconds across Vercel serverless containers
+                # Submit result back to cloud gateway with real-time status reporting
                 res_start = time.time()
                 attempt = 0
-                while (time.time() - res_start) < 26.0:
+                delivered = False
+                while (time.time() - res_start) < 26.0 and self.running:
                     attempt += 1
                     try:
                         async with httpx.AsyncClient(timeout=4.0, limits=httpx.Limits(max_keepalive_connections=0)) as res_client:
@@ -769,13 +796,23 @@ class LocalBridgeAgent:
                                 json={"task_id": task_id, "result": result, "error": error}
                             )
                             if res.status_code == 200:
-                                print(f"🚀 [RESULT DELIVERED] in {round(time.time() - res_start, 2)}s (attempt {attempt})")
+                                deliv_ms = round((time.time() - res_start) * 1000, 1)
+                                print(f"🚀 Delivered result to AI assistant in {deliv_ms}ms (attempt {attempt})", flush=True)
+                                delivered = True
                                 break
+                            elif attempt == 1:
+                                print(f"⏳ Waiting for cloud container to receive result (attempt {attempt}, status {res.status_code})...", flush=True)
                             elif attempt % 6 == 0:
-                                print(f"⏳ [RESULT RETRY] attempt {attempt}: waiting for container (status {res.status_code})")
-                    except Exception as e:
+                                print(f"⏳ Synchronizing with cloud container (attempt {attempt}, status {res.status_code})...", flush=True)
+                    except Exception:
                         pass
                     await asyncio.sleep(0.25)
+
+                if not delivered and self.running:
+                    print(f"⚠️ Result delivery timed out after 26s across cloud containers.", flush=True)
+                    print(f"💡 Tip: Run in direct mode for instant zero-serverless execution: python bridge.py --direct", flush=True)
+
+                print("─" * 70 + "\n", flush=True)
 
             except httpx.HTTPError:
                 consecutive_errors += 1
@@ -788,15 +825,16 @@ class LocalBridgeAgent:
 
     async def run(self):
         self.running = True
-        print("=" * 60)
-        print("🚀 Universal IDE Global Multi-Project Bridge Connected")
-        print(f"📁 Projects Root:  {self.executor.projects_root}")
-        if self.executor.active_project:
-            print(f"🎯 Active Project: {self.executor.active_project}")
-        print(f"🌐 Cloud Relay:    {self.server_url}")
-        print("⚡ Engine:         High-Speed StreamableHTTP (3 Concurrent Workers)")
-        print("=" * 60)
-        print("Waiting for AI commands from Claude / Gemini / ChatGPT in browser...\n")
+        print("╔════════════════════════════════════════════════════════════════════════════╗", flush=True)
+        print("║              🚀 Universal IDE Bridge (On-Demand Dev Session)               ║", flush=True)
+        print("╚════════════════════════════════════════════════════════════════════════════╝", flush=True)
+        print(f"📁 Projects Root:    {self.executor.projects_root}", flush=True)
+        print(f"🎯 Active Workspace: {self.executor.current_workspace_path}", flush=True)
+        print(f"🌐 Cloud Gateway:    {self.server_url}", flush=True)
+        print(f"🔑 Auth Token:       {self.auth_token[:8]}...{self.auth_token[-4:] if len(self.auth_token) > 12 else ''}", flush=True)
+        print(f"🟢 Status:           ACTIVE & LISTENING (Press Ctrl+C to stop)", flush=True)
+        print("────────────────────────────────────────────────────────────────────────", flush=True)
+        print("💡 Ready! When Claude, ChatGPT, or Gemini Web calls a tool, logs will stream below:\n", flush=True)
 
         poll_url = f"{self.server_url}/api/relay/poll"
         result_url = f"{self.server_url}/api/relay/result"
@@ -806,7 +844,7 @@ class LocalBridgeAgent:
             keepalive_task = asyncio.create_task(self._keepalive_loop(client))
             workers = [
                 asyncio.create_task(self._poll_worker(i, client, poll_url, result_url))
-                for i in range(4)
+                for i in range(3)
             ]
             try:
                 await asyncio.gather(*workers, return_exceptions=True)
@@ -819,87 +857,115 @@ class LocalBridgeAgent:
                     w.cancel()
 
 
-def handle_startup_installation(server: str, key: str, root_dir: str, uninstall: bool = False):
-    if sys.platform != "win32":
-        print("Startup service installer is currently supported on Windows.")
+CONFIG_FILE = Path.home() / ".universal_ide_bridge.json"
+
+
+def load_saved_config() -> Dict[str, Any]:
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def save_config(server: str, key: str, root: str):
+    data = {
+        "server": server,
+        "key": key,
+        "root": root
+    }
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        print(f"✅ Saved global bridge settings to {CONFIG_FILE}")
+    except Exception as e:
+        print(f"⚠️ Could not save settings: {e}")
+
+
+def run_direct_mode(projects_root: str, port: int = 8000):
+    """Launches local FastMCP server + Cloudflare Tunnel for direct, zero-relay connection."""
+    direct_script = Path(__file__).parent / "direct_mcp.py"
+    if not direct_script.exists():
+        print(f"❌ Error: direct_mcp.py not found at {direct_script}")
         return
 
-    startup_dir = Path(os.environ.get("APPDATA", "")) / "Microsoft/Windows/Start Menu/Programs/Startup"
-    if not startup_dir.exists():
-        print(f"❌ Windows Startup directory not found at {startup_dir}")
-        return
-
-    vbs_path = startup_dir / "UniversalIDEGlobalBridge.vbs"
-    legacy_vbs = startup_dir / "AntigravityGlobalBridge.vbs"
-
-    if uninstall:
-        removed = False
-        for path in (vbs_path, legacy_vbs):
-            if path.exists():
-                path.unlink()
-                removed = True
-        if removed:
-            print("✅ Removed Universal IDE Global Bridge from Windows Startup.")
-        else:
-            print("Notice: Universal IDE Global Bridge was not installed in Startup.")
-        return
-
-    # Clean legacy if upgrading
-    if legacy_vbs.exists():
-        legacy_vbs.unlink()
-
-    python_exe = sys.executable
-    script_path = Path(__file__).resolve()
-
-    vbs_content = f'''Set WshShell = CreateObject("WScript.Shell")
-WshShell.Run """{python_exe}"" ""{script_path}"" --server ""{server}"" --key ""{key}"" --root ""{root_dir}""", 0, False
-'''
-    with open(vbs_path, "w", encoding="utf-8") as f:
-        f.write(vbs_content)
-
-    print(f"\n=======================================================")
-    print(f"🎉 Universal IDE Global Bridge successfully installed!")
-    print(f"📁 Projects Root: {root_dir}")
-    print(f"📍 Location:      {vbs_path}")
-    print(f"⚡ It will now run silently in the background on every Windows boot.")
-    print(f"=======================================================\n")
+    cmd = [sys.executable, "-u", str(direct_script), "--root", projects_root, "--port", str(port)]
+    try:
+        proc = subprocess.Popen(cmd)
+        proc.wait()
+    except KeyboardInterrupt:
+        print("\n🛑 Direct MCP session stopped by user (Ctrl+C). Goodbye!")
+        try:
+            proc.terminate()
+        except Exception:
+            pass
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Universal IDE Standalone Global Multi-Project Bridge")
-    parser.add_argument("--server", default="https://vscode-antigravity-mcp.vercel.app", help="Cloud MCP Server URL")
-    parser.add_argument("--key", required=False, default=os.getenv("MCP_AUTH_TOKEN", ""), help="Your User Auth Token")
-    parser.add_argument("--dir", default=".", help="Workspace directory (default: current directory)")
-    parser.add_argument("--root", default=None, help="Root folder containing all projects (e.g. C:\\projects)")
-    parser.add_argument("--install-startup", action="store_true", help="Install to run silently in the background on Windows boot")
-    parser.add_argument("--uninstall-startup", action="store_true", help="Remove from Windows startup")
+    parser = argparse.ArgumentParser(
+        description="Universal IDE Bridge - On-Demand Local Developer Session",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  bridge                                Run bridge with saved defaults
+  bridge --root "C:\\projects"           Run specifying projects root directory
+  bridge --key "MY_TOKEN"               Run specifying your auth token
+  bridge --save --root "C:\\projects"    Save root & token as global defaults
+  bridge --direct                       Run high-speed direct Cloudflare tunnel mode
+"""
+    )
+    saved = load_saved_config()
+
+    default_server = saved.get("server") or os.getenv("MCP_SERVER_URL", "https://vscode-antigravity-mcp.vercel.app")
+    default_key = saved.get("key") or os.getenv("MCP_AUTH_TOKEN", "D4_PROJECT_MCP_SERVER")
+    default_root = saved.get("root") or os.getenv("MCP_PROJECTS_ROOT", "C:\\projects" if Path("C:\\projects").exists() else ".")
+
+    parser.add_argument("--server", "-s", default=default_server, help=f"Cloud MCP Gateway URL (default: {default_server})")
+    parser.add_argument("--key", "-k", "--token", dest="key", default=default_key, help="User Auth Token")
+    parser.add_argument("--dir", default=".", help="Initial project/workspace directory (default: current directory)")
+    parser.add_argument("--root", "-r", default=default_root, help=f"Parent directory of all projects (default: {default_root})")
+    parser.add_argument("--direct", "-d", action="store_true", help="Run direct local FastMCP server with Cloudflare tunnel (bypasses Vercel)")
+    parser.add_argument("--save", action="store_true", help="Save the provided --root, --key, and --server as global defaults")
+    parser.add_argument("--show-config", action="store_true", help="Display saved global configuration")
 
     args = parser.parse_args()
 
-    if args.install_startup or args.uninstall_startup:
-        if not args.key and not args.uninstall_startup:
-            print("❌ Error: --key is required to install in Startup.")
-            sys.exit(1)
-        root = args.root or str(Path(args.dir).resolve().parent if Path(args.dir).name != "projects" else Path(args.dir).resolve())
-        handle_startup_installation(args.server, args.key, root, uninstall=args.uninstall_startup)
+    if args.show_config:
+        print("\n📁 Current Saved Global Bridge Configuration:")
+        print(f"   Config file: {CONFIG_FILE}")
+        print(f"   Server:      {args.server}")
+        print(f"   Root:        {args.root}")
+        print(f"   Token:       {args.key}\n")
         return
 
-    if not args.key:
-        print("❌ Error: Authentication token is required.")
-        print("Specify --key <your-token> or run with --install-startup to register as a service.")
-        sys.exit(1)
+    if args.save:
+        save_config(args.server, args.key, args.root)
 
-    agent = LocalBridgeAgent(server_url=args.server, auth_token=args.key, workspace_dir=args.dir, projects_root=args.root)
-    while True:
-        try:
-            asyncio.run(agent.run())
-        except KeyboardInterrupt:
-            print("\n👋 Disconnected by user.")
-            break
-        except Exception as e:
-            print(f"⚠️ Bridge connection interrupted ({e}). Auto-reconnecting in 3 seconds...")
-            time.sleep(3)
+    # Direct tunnel mode (Zero Vercel middleman)
+    if args.direct:
+        run_direct_mode(projects_root=args.root)
+        return
+
+    # Standard interactive on-demand bridge session
+    agent = LocalBridgeAgent(
+        server_url=args.server,
+        auth_token=args.key,
+        workspace_dir=args.dir,
+        projects_root=args.root
+    )
+
+    try:
+        asyncio.run(agent.run())
+    except KeyboardInterrupt:
+        print("\n" + "─" * 70, flush=True)
+        print("🛑 Bridge session stopped by user (Ctrl+C). Clean shutdown complete.", flush=True)
+        print("👋 Goodbye!\n", flush=True)
+    except Exception as e:
+        print(f"\n❌ Bridge stopped with error: {e}", flush=True)
 
 
 if __name__ == "__main__":
     main()
+
