@@ -60,53 +60,55 @@ curl -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
 
 ---
 
-### Step 2: Start the Bridge
+---
 
-Run `bridge.py` with your personal token and the server URL:
+## ⚡ Global Multi-Project Mode (Connect ONCE, Use Lifetime)
+
+Instead of running the bridge inside a specific folder, you can connect your **entire projects folder** (e.g. `C:\projects` or `~/projects`) once. Gemini and ChatGPT will be able to discover, switch between, and edit **any project on your computer** directly from the chat window!
+
+### Option A: 1-Time Lifetime Install (Runs silently in the background on startup)
+
+On Windows, run this **one time**:
+```powershell
+python bridge.py --install-startup --key "YOUR_SECRET_KEY" --root "C:\projects"
+```
+* That's it! It runs silently in the background on every Windows boot. No terminal windows, no restarts.
+* *(To uninstall anytime, simply run `python bridge.py --uninstall-startup`)*.
+
+---
+
+### Option B: Run in Terminal for All Projects
 
 ```bash
-python bridge.py --key "YOUR_USER_TOKEN" --server "https://vscode-antigravity-mcp.vercel.app"
+python bridge.py --key "YOUR_SECRET_KEY" --root "C:\projects"
 ```
-
-You will see:
-```text
-============================================================
-🚀 Antigravity IDE Bridge Connected
-📁 Workspace:   /path/to/your/project
-🌐 Cloud Relay: https://vscode-antigravity-mcp.vercel.app
-============================================================
-Waiting for AI commands from Gemini / ChatGPT in browser...
-```
-*(Leave this terminal tab open in the background while you chat with your AI).*
 
 ---
 
-### Step 3: Connect to Gemini Web or ChatGPT
+## 🤖 How You Interact with Gemini / ChatGPT (Multi-Project)
 
-#### In Gemini Web:
-1. Open [Gemini](https://gemini.google.com/) -> **Settings** -> **Connected Apps** -> **Connect to an MCP server**.
-2. **MCP server URL**:
-   ```text
-   https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_USER_TOKEN
-   ```
-3. Leave **Client ID** and **Client secret** blank.
-4. Click **Next**!
+Once connected, you can manage all your projects directly in your chat:
 
-#### In ChatGPT (Custom GPT Actions):
-1. In your Custom GPT -> **Actions** -> **Import from URL**:
-   ```text
-   https://vscode-antigravity-mcp.vercel.app/openapi.json
-   ```
-2. Set Authentication to **Bearer** and paste `YOUR_USER_TOKEN`.
+* **Ask to see your projects**:
+  > *"What projects do I have on my machine?"*
+  > **Gemini**: *"Found 3 projects: `d4-workforce-management`, `ai-agent`, and `portfolio`."*
+
+* **Ask to switch projects**:
+  > *"Switch to `d4-workforce-management` and analyze `AllInbox.jsx`."*
+  > **Gemini**: *"Switched active project to `d4-workforce-management`. Here is what `AllInbox.jsx` does..."*
+
+* **Cross-project refactoring**:
+  > *"Compare the database schema in `project-A` with `project-B` and edit `schema.prisma`."*
 
 ---
 
-## 🛠️ Tools Given to the AI
+## 🛠️ Complete Tools Reference
 
-Once connected, your AI assistant can invoke these tools in real-time on your computer:
-
-| Tool | What It Does |
+| Tool | Description |
 |---|---|
+| `list_projects()` | Discovers and lists all project folders, detected tech stacks, and Git branches. |
+| `set_active_project(name)` | Switches the active project context to a different folder on your computer. |
+| `get_active_project()` | Inspects current active project name, workspace path, and Git status. |
 | `read_workspace_file(path)` | Reads lines or full contents of any file in your project. |
 | `write_workspace_file(path, content)` | Creates or replaces files in your workspace. |
 | `edit_workspace_file(path, old, new)` | Finds and replaces specific code blocks in a file. |
@@ -114,6 +116,7 @@ Once connected, your AI assistant can invoke these tools in real-time on your co
 | `search_workspace_files(query)` | Searches for text, classes, or symbols across your codebase. |
 | `run_terminal_command(command)` | Runs commands (tests, builds, lints) in your project. |
 | `get_workspace_context()` | Queries Git branch, status, and modified files. |
+
 
 ---
 
