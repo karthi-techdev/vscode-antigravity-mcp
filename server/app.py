@@ -1,6 +1,7 @@
 import time
 from typing import Dict, Any, Optional
-from fastapi import FastAPI, Depends, HTTPException, status, Body
+from fastapi import FastAPI, Depends, HTTPException, status, Body, Request
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastmcp import FastMCP
@@ -21,11 +22,15 @@ mcp_server = FastMCP(
 )
 register_tools(mcp_server)
 
-# Initialize FastAPI Application
+# Create FastMCP SSE application
+sse_application = mcp_server.http_app(transport="sse")
+
+# Initialize FastAPI Application with FastMCP lifespan
 app = FastAPI(
     title="Antigravity IDE MCP Gateway",
     description="Multi-Tenant MCP & REST Bridge connecting Web LLMs to Local VS Code / Antigravity instances.",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=sse_application.lifespan
 )
 
 # Enable CORS for browser-based AI clients
@@ -39,7 +44,6 @@ app.add_middleware(
 
 # Mount FastMCP SSE transport at /mcp
 # Endpoints provided: /mcp/sse and /mcp/messages
-sse_application = mcp_server.http_app(transport="sse")
 app.mount("/mcp", sse_application)
 
 
@@ -68,6 +72,27 @@ async def root():
 async def health_check():
     """Health check for uptime monitors and container orchestrators."""
     return {"status": "ok", "timestamp": time.time()}
+
+
+@app.api_route("/mcp", methods=["GET", "POST"])
+async def mcp_redirect(request: Request):
+    """Redirect /mcp to /mcp/sse, preserving query parameters and method."""
+    query = str(request.url.query)
+    target = "/mcp/sse"
+    if query:
+        target += f"?{query}"
+    return RedirectResponse(url=target, status_code=307)
+
+
+@app.api_route("/sse", methods=["GET", "POST"])
+async def sse_redirect(request: Request):
+    """Redirect /sse to /mcp/sse, preserving query parameters and method."""
+    query = str(request.url.query)
+    target = "/mcp/sse"
+    if query:
+        target += f"?{query}"
+    return RedirectResponse(url=target, status_code=307)
+
 
 
 @app.get("/api/status")
