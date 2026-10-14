@@ -103,8 +103,8 @@ async def root():
         "service": "Universal IDE MCP Gateway",
         "version": "0.1.0",
         "status": "healthy",
-        "mcp_sse_endpoint": "/sse/sse",
-        "mcp_streamable_endpoint": "/mcp",
+        "mcp_endpoint": "/mcp",
+        "transport": "streamable-http",
         "documentation": "/docs"
     }
 
