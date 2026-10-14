@@ -68,6 +68,31 @@ class InMemoryRelayManager:
             if user_id in self.user_task_events:
                 self.user_task_events[user_id].set()
 
+        # Listen for cross-container mesh delivery in case result lands on a different Vercel container
+        async def _mesh_listener():
+            mesh_url = f"https://ntfy.sh/mcp_res_{task.task_id}/json?poll=1"
+            limits = httpx.Limits(max_keepalive_connections=0)
+            t0 = time.time()
+            while (time.time() - t0) < (RELAY_TASK_TIMEOUT - 1) and not task.event.is_set():
+                try:
+                    async with httpx.AsyncClient(timeout=2.0, limits=limits) as m_client:
+                        m_res = await m_client.get(mesh_url)
+                        if m_res.status_code == 200 and m_res.text.strip():
+                            for line in m_res.text.strip().splitlines():
+                                data = json.loads(line)
+                                if data.get("event") == "message":
+                                    payload = json.loads(data["message"])
+                                    task.result = payload.get("result")
+                                    task.error = payload.get("error")
+                                    task.completed_at = time.time()
+                                    task.event.set()
+                                    return
+                except Exception:
+                    pass
+                await asyncio.sleep(0.35)
+
+        mesh_worker = asyncio.create_task(_mesh_listener())
+
         try:
             await asyncio.wait_for(task.event.wait(), timeout=RELAY_TASK_TIMEOUT)
         except asyncio.TimeoutError:
@@ -85,6 +110,8 @@ class InMemoryRelayManager:
             raise TimeoutError(
                 f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'."
             )
+        finally:
+            mesh_worker.cancel()
 
         if task.error:
             raise RuntimeError(f"Error from local IDE: {task.error}")
@@ -121,14 +148,26 @@ class InMemoryRelayManager:
     async def submit_result(self, task_id: str, result: Any = None, error: Optional[str] = None) -> bool:
         async with self._lock:
             task = self.active_tasks.pop(task_id, None)
-            if not task:
-                return False
+            if task:
+                task.result = result
+                task.error = error
+                task.completed_at = time.time()
+                task.event.set()
+                return True
 
-            task.result = result
-            task.error = error
-            task.completed_at = time.time()
-            task.event.set()
-            return True
+        # If task was not in this container's in-memory RAM (multi-container serverless routing):
+        # Relay result via cross-container mesh so the awaiting container receives it immediately!
+        try:
+            mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
+            payload = {"task_id": task_id, "result": result, "error": error}
+            limits = httpx.Limits(max_keepalive_connections=0)
+            async with httpx.AsyncClient(timeout=3.0, limits=limits) as client:
+                res = await client.post(mesh_url, json=payload)
+                if res.status_code == 200:
+                    return True
+        except Exception:
+            pass
+        return False
 
 
 class UpstashRedisRelay:

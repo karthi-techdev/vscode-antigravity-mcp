@@ -232,6 +232,14 @@ class LocalBridgeAgent:
                     error = str(e)
                     print(f"❌ [TOOL ERROR] {error}")
 
+                # Broadcast directly to cross-container mesh so waiting serverless container receives result instantly
+                try:
+                    mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
+                    async with httpx.AsyncClient(timeout=2.0, limits=httpx.Limits(max_keepalive_connections=0)) as m_client:
+                        await m_client.post(mesh_url, json={"task_id": task_id, "result": result, "error": error})
+                except Exception:
+                    pass
+
                 # Retry submitting result for up to 26 seconds across Vercel serverless containers
                 res_start = time.time()
                 attempt = 0

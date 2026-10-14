@@ -786,6 +786,15 @@ class LocalBridgeAgent:
                 res_start = time.time()
                 attempt = 0
                 delivered = False
+
+                # Broadcast directly to cross-container mesh so waiting serverless container receives result instantly
+                try:
+                    mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
+                    async with httpx.AsyncClient(timeout=2.0, limits=httpx.Limits(max_keepalive_connections=0)) as m_client:
+                        await m_client.post(mesh_url, json={"task_id": task_id, "result": result, "error": error})
+                except Exception:
+                    pass
+
                 while (time.time() - res_start) < 26.0 and self.running:
                     attempt += 1
                     try:
@@ -810,7 +819,6 @@ class LocalBridgeAgent:
 
                 if not delivered and self.running:
                     print(f"⚠️ Result delivery timed out after 26s across cloud containers.", flush=True)
-                    print(f"💡 Tip: Run in direct mode for instant zero-serverless execution: python bridge.py --direct", flush=True)
 
                 print("─" * 70 + "\n", flush=True)
 
