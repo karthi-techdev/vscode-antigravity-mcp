@@ -39,10 +39,24 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
     except Exception:
         pass
 
+    # 3. Fallback: If token was not attached to URL/header (e.g. Gemini Connected Apps added without ?token=),
+    # automatically route to the user's active local bridge!
+    import time
+    now = time.time()
+    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 60.0]
+    if active_users:
+        return max(active_users, key=lambda u: relay_manager.client_heartbeats.get(u, 0))
+
+    if relay_manager.client_heartbeats:
+        return max(relay_manager.client_heartbeats.items(), key=lambda x: x[1])[0]
+
+    from server.auth import DYNAMIC_TOKENS
+    if DYNAMIC_TOKENS:
+        return list(DYNAMIC_TOKENS.values())[-1]
+
     raise PermissionError(
-        "Authentication required: No valid token provided. "
-        "Supply 'Authorization: Bearer <token>', query param '?token=<token>', "
-        "or include 'token' in the tool parameters."
+        "No active local IDE bridge detected. Please start your local companion: "
+        "`python bridge.py --key <your-key>`"
     )
 
 

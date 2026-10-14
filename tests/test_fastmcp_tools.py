@@ -129,4 +129,10 @@ async def test_streamable_http_gemini_handshake():
         assert r_tools.status_code == 200
         assert "list_projects" in r_tools.text
 
+        # 4. Fallback test: verify get_user_id_for_tool routes to active bridge without token
+        from server.tools import get_user_id_for_tool
+        from server.relay import relay_manager
+        relay_manager.update_heartbeat("test_gemini_active_user")
+        assert get_user_id_for_tool(None) == "test_gemini_active_user"
+
 
