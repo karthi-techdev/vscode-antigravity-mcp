@@ -40,13 +40,30 @@ Cloud AI models (Gemini Web, ChatGPT) cannot directly reach into your computer b
 
 ---
 
-## 🚀 Quickstart for End-Users (ZERO Git Cloning Required)
+## 🌐 Connection Details (At a Glance)
 
-If you are a developer who just wants to connect your local project to Gemini Web or ChatGPT using an existing hosted bridge, **you do NOT need to clone this repository!**
+Connect any MCP-compatible AI client to your local workspace using these hosted endpoints:
 
-### Step 1: Download the Bridge into your project
+| Parameter | Value |
+|---|---|
+| **Hosted Server URL** | `https://vscode-antigravity-mcp.vercel.app` |
+| **MCP SSE Endpoint** | `https://vscode-antigravity-mcp.vercel.app/mcp/sse` |
+| **Complete Connection URL** | `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY` |
+| **Auth Options** | Query Parameter (`?token=YOUR_SECRET_KEY`) or Header (`Authorization: Bearer YOUR_SECRET_KEY`) |
+| **Your Secret Key** | Any private passphrase you choose (e.g. `karthi_secure_2026`). **Zero server pre-registration required!** |
+| **Protocol** | Model Context Protocol (MCP) via Server-Sent Events (SSE) |
 
-Open your terminal in **whatever project you want the AI to work on** (e.g. `C:\my-cool-app`), and run:
+---
+
+## ⚡ Step-by-Step Setup Guide (ZERO Git Cloning Required)
+
+You do **NOT** need to clone this repository. You only need the single [`bridge.py`](https://vscode-antigravity-mcp.vercel.app/bridge.py) helper file on your machine.
+
+---
+
+### Step 1: Download `bridge.py`
+
+Open your terminal in your root projects folder (e.g. `C:\projects` or `~/projects`) or any individual repository:
 
 #### Windows (PowerShell):
 ```powershell
@@ -60,45 +77,146 @@ curl -o bridge.py https://vscode-antigravity-mcp.vercel.app/bridge.py
 
 ---
 
----
+### Step 2: Start the Local Bridge
 
-## ⚡ Global Multi-Project Mode (Connect ONCE, Use Lifetime)
+Choose **any private key** you want (e.g. `--key "my_secret_key_123"`).
 
-Instead of running the bridge inside a specific folder, you can connect your **entire projects folder** (e.g. `C:\projects` or `~/projects`) once. Gemini and ChatGPT will be able to discover, switch between, and edit **any project on your computer** directly from the chat window!
-
-### Option A: 1-Time Lifetime Install (Runs silently in the background on startup)
-
+#### 🌟 Option A: 1-Time Lifetime Install (Runs in the background on startup)
 On Windows, run this **one time**:
 ```powershell
 python bridge.py --install-startup --key "YOUR_SECRET_KEY" --root "C:\projects"
 ```
-* That's it! It runs silently in the background on every Windows boot. No terminal windows, no restarts.
-* *(To uninstall anytime, simply run `python bridge.py --uninstall-startup`)*.
+* **Silent & Automatic**: Starts in the background on every Windows boot.
+* No open terminal windows, no maintenance.
+* *(To uninstall anytime: `python bridge.py --uninstall-startup`)*
 
----
-
-### Option B: Run in Terminal for All Projects
-
+#### 💻 Option B: Run in Current Terminal
 ```bash
 python bridge.py --key "YOUR_SECRET_KEY" --root "C:\projects"
 ```
 
+Once started, the bridge securely connects outbound to the Vercel gateway and waits for commands.
+
 ---
 
-## 🤖 How You Interact with Gemini / ChatGPT (Multi-Project)
+### Step 3: Connect Your AI Assistant
 
-Once connected, you can manage all your projects directly in your chat:
+Choose your AI platform below and follow the quick setup steps:
 
-* **Ask to see your projects**:
-  > *"What projects do I have on my machine?"*
-  > **Gemini**: *"Found 3 projects: `d4-workforce-management`, `ai-agent`, and `portfolio`."*
+#### 🟣 Claude Desktop
+Claude Desktop connects to remote SSE MCP servers using `mcp-remote`.
 
-* **Ask to switch projects**:
-  > *"Switch to `d4-workforce-management` and analyze `AllInbox.jsx`."*
-  > **Gemini**: *"Switched active project to `d4-workforce-management`. Here is what `AllInbox.jsx` does..."*
+1. Open your Claude Desktop configuration file:
+   * **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   * **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+2. Add the `antigravity-ide` server under `"mcpServers"`:
+   ```json
+   {
+     "mcpServers": {
+       "antigravity-ide": {
+         "command": "npx",
+         "args": [
+           "-y",
+           "mcp-remote",
+           "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY"
+         ]
+       }
+     }
+   }
+   ```
+3. Restart Claude Desktop. You will see a hammer icon 🔨 with all **17 IDE tools** ready to use!
 
-* **Cross-project refactoring**:
-  > *"Compare the database schema in `project-A` with `project-B` and edit `schema.prisma`."*
+---
+
+#### 🟢 ChatGPT (Web & Custom GPTs)
+You can connect ChatGPT Plus / Team / Enterprise via **Custom GPT Actions** or browser MCP plugins:
+
+##### Using Custom GPT Actions:
+1. Go to [chatgpt.com](https://chatgpt.com) ➔ **Explore GPTs** ➔ **Create a GPT**.
+2. Click **Configure** tab ➔ Scroll down and click **Create new action**.
+3. Under **Authentication**:
+   * **Authentication Type**: `API Key`
+   * **Auth Type**: `Bearer`
+   * **API Key**: Enter your `YOUR_SECRET_KEY`.
+4. Under **Import from URL / Schema**:
+   * Enter: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
+5. Save the GPT and start chatting!
+
+##### Using ChatGPT MCP Browser Connectors / Extensions:
+* **Server URL**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
+* **Transport**: `SSE`
+
+---
+
+#### 🔵 Gemini Web & Google Antigravity IDE
+
+##### In Google Antigravity IDE:
+Add the remote MCP bridge to your global or workspace `mcp_config.json` (`~/.gemini/antigravity-ide/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "antigravity-remote": {
+      "url": "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY"
+    }
+  }
+}
+```
+
+##### In Gemini Web (via MCP Web Extension):
+* **Endpoint**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
+* **Auth**: Pass your key in the `Authorization: Bearer YOUR_SECRET_KEY` header or query parameter.
+
+---
+
+#### 🟡 Cursor & VS Code (Cline, Roo Code, Continue.dev)
+
+##### In Cline / Roo Code (VS Code Extension):
+1. Click the **MCP Servers** (network plug) icon in the Cline/Roo Code sidebar.
+2. Click **Add New MCP Server** or open `cline_mcp_settings.json`:
+   ```json
+   {
+     "mcpServers": {
+       "antigravity-ide": {
+         "url": "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY",
+         "type": "sse"
+       }
+     }
+   }
+   ```
+
+##### In Continue.dev (`~/.continue/config.json`):
+```json
+{
+  "mcpServers": [
+    {
+      "name": "antigravity-ide",
+      "url": "https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY"
+    }
+  ]
+}
+```
+
+---
+
+### Step 4: Chat and Control Your Workspace!
+
+Now simply ask your AI assistant naturally in the chat:
+
+* **Discover & switch projects**:
+  > *"What projects do I have on my computer?"*
+  > *"Switch active project to `my-web-app`."*
+
+* **Read & modify files**:
+  > *"Read `src/App.tsx` and explain how authentication is implemented."*
+  > *"Add a new modal component in `src/components/Modal.tsx`."*
+
+* **Run Git commands**:
+  > *"Check git status and show me what changed in the last commit."*
+  > *"Create a new git branch called `feature/mcp-integration`."*
+
+* **Run PowerShell / CMD commands**:
+  > *"Run `npm test` using PowerShell and tell me if all tests pass."*
+  > *"Execute `git log -n 3` and summarize recent work."*
 
 ---
 
