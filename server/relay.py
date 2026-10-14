@@ -103,7 +103,7 @@ class RelayManager:
 
         return task.result
 
-    async def poll_task(self, user_id: str, wait_timeout: float = 15.0) -> Optional[Dict[str, Any]]:
+    async def poll_task(self, user_id: str, wait_timeout: float = 1.5) -> Optional[Dict[str, Any]]:
         """
         Called by local IDE companion to receive work. Supports long-polling.
         """

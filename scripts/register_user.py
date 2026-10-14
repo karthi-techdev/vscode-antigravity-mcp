@@ -24,7 +24,7 @@ def main():
     print("\n2. To run the local bridge on this user\'s machine:")
     print(f'   python -m client.agent --key "{token}" --server "https://your-domain.vercel.app"')
     print("\n3. In ChatGPT / Gemini Web MCP configuration:")
-    print(f'   URL: https://your-domain.vercel.app/mcp/sse?token={token}')
+    print(f'   URL: https://your-domain.vercel.app/mcp?token={token}')
     print(f'   Header: Authorization: Bearer {token}\n')
 
 

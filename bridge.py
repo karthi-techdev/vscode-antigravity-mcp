@@ -688,6 +688,63 @@ class LocalBridgeAgent:
             except Exception:
                 pass
 
+    async def _poll_worker(self, worker_id: int, client: httpx.AsyncClient, poll_url: str, result_url: str):
+        """Worker that polls cloud relay for tasks and submits results with retry."""
+        consecutive_errors = 0
+        while self.running:
+            try:
+                response = await client.post(poll_url, headers=self.headers, json={"wait_timeout": 1.5})
+                if response.status_code == 401:
+                    print("❌ Auth error: Token rejected by server. Exiting.")
+                    self.running = False
+                    break
+                if response.status_code != 200:
+                    await asyncio.sleep(0.5)
+                    continue
+
+                data = response.json()
+                consecutive_errors = 0
+                task = data.get("task")
+                if not task:
+                    continue
+
+                task_id = task.get("task_id")
+                tool_name = task.get("tool_name")
+                params = task.get("parameters", {})
+
+                print(f"⚡ [AI REQUEST] {tool_name} -> {params}")
+                result, error = None, None
+                try:
+                    result = await self.execute_task(tool_name, params)
+                    print(f"✅ [SUCCESS] {tool_name}")
+                except Exception as e:
+                    error = str(e)
+                    print(f"❌ [TOOL ERROR] {error}")
+
+                # Ensure result is submitted back to the waiting Vercel instance with retry
+                for attempt in range(8):
+                    try:
+                        res = await client.post(
+                            result_url,
+                            headers=self.headers,
+                            json={"task_id": task_id, "result": result, "error": error},
+                            timeout=8.0
+                        )
+                        if res.status_code == 200:
+                            break
+                        await asyncio.sleep(0.12)
+                    except Exception:
+                        await asyncio.sleep(0.15)
+
+            except (httpx.ConnectError, httpx.TimeoutException):
+                consecutive_errors += 1
+                wait_time = min(5, 2 ** min(consecutive_errors, 2))
+                await asyncio.sleep(wait_time)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                await asyncio.sleep(0.5)
+
     async def run(self):
         self.running = True
         print("=" * 60)
@@ -696,65 +753,28 @@ class LocalBridgeAgent:
         if self.executor.active_project:
             print(f"🎯 Active Project: {self.executor.active_project}")
         print(f"🌐 Cloud Relay:    {self.server_url}")
+        print("⚡ Engine:         High-Speed StreamableHTTP (3 Concurrent Workers)")
         print("=" * 60)
-        print("Waiting for AI commands from Gemini / ChatGPT in browser...\n")
+        print("Waiting for AI commands from Claude / Gemini / ChatGPT in browser...\n")
 
         poll_url = f"{self.server_url}/api/relay/poll"
         result_url = f"{self.server_url}/api/relay/result"
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             keepalive_task = asyncio.create_task(self._keepalive_loop(client))
-            consecutive_errors = 0
+            workers = [
+                asyncio.create_task(self._poll_worker(i, client, poll_url, result_url))
+                for i in range(3)
+            ]
             try:
-                while self.running:
-                    try:
-                        response = await client.post(poll_url, headers=self.headers, json={"wait_timeout": 15})
-                        if response.status_code == 401:
-                            print(f"❌ Auth error: Token rejected by server. Exiting.")
-                            self.running = False
-                            break
-                        if response.status_code != 200:
-                            await asyncio.sleep(3)
-                            continue
-
-                        data = response.json()
-                        consecutive_errors = 0
-                        task = data.get("task")
-                        if not task:
-                            continue
-
-                        task_id = task.get("task_id")
-                        tool_name = task.get("tool_name")
-                        params = task.get("parameters", {})
-
-                        print(f"⚡ [AI REQUEST] {tool_name} -> {params}")
-                        result, error = None, None
-                        try:
-                            result = await self.execute_task(tool_name, params)
-                            print(f"✅ [SUCCESS] {tool_name}")
-                        except Exception as e:
-                            error = str(e)
-                            print(f"❌ [TOOL ERROR] {error}")
-
-                        await client.post(
-                            result_url,
-                            headers=self.headers,
-                            json={"task_id": task_id, "result": result, "error": error}
-                        )
-                    except (httpx.ConnectError, httpx.TimeoutException):
-                        consecutive_errors += 1
-                        wait_time = min(10, 2 ** consecutive_errors)
-                        print(f"🔄 Reconnecting to cloud relay in {wait_time}s...")
-                        await asyncio.sleep(wait_time)
-                    except asyncio.CancelledError:
-                        print("\n🛑 Bridge stopped.")
-                        self.running = False
-                        break
-                    except Exception as e:
-                        print(f"⚠️ Error: {str(e)}")
-                        await asyncio.sleep(2)
+                await asyncio.gather(*workers)
+            except asyncio.CancelledError:
+                pass
             finally:
+                self.running = False
                 keepalive_task.cancel()
+                for w in workers:
+                    w.cancel()
 
 
 def handle_startup_installation(server: str, key: str, root_dir: str, uninstall: bool = False):

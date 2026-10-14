@@ -26,20 +26,15 @@ mcp_server = FastMCP(
 )
 register_tools(mcp_server)
 
-# 1. StreamableHTTP app (Required by Google Gemini Web Connected Apps & modern MCP clients)
+# Initialize StreamableHTTP MCP app (Official high-performance standard for Claude, Gemini, ChatGPT)
 streamable_http_app = mcp_server.http_app(path="/", stateless_http=True)
-
-# 2. SSE app (For legacy SSE clients)
-sse_application = mcp_server.http_app(transport="sse")
 
 @asynccontextmanager
 async def app_lifespan(fastapi_app: FastAPI):
-    async with AsyncExitStack() as stack:
-        await stack.enter_async_context(streamable_http_app.lifespan(fastapi_app))
-        await stack.enter_async_context(sse_application.lifespan(fastapi_app))
+    async with streamable_http_app.lifespan(fastapi_app):
         yield
 
-# Initialize FastAPI Application with combined FastMCP lifespan
+# Initialize FastAPI Application
 app = FastAPI(
     title="Universal IDE MCP Gateway",
     description="Multi-Tenant MCP & REST Bridge connecting Web LLMs to any local IDE or developer workspace (VS Code, Cursor, Windsurf, JetBrains, etc.).",
@@ -56,60 +51,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Probe & rewrite middleware: routes /mcp, /mcp/sse, and /sse without 404s or redirects
+# Probe & rewrite middleware: routes all /mcp, /sse, and message endpoints directly to StreamableHTTP
 @app.middleware("http")
 async def mcp_probe_middleware(request: Request, call_next):
-    # Route SSE endpoints seamlessly whether client requests /mcp/sse, /sse, or /sse/sse
-    if request.url.path in ("/mcp/sse", "/mcp/sse/"):
-        request.scope["path"] = "/sse/sse"
-        return await call_next(request)
-    if request.url.path in ("/sse", "/sse/"):
-        request.scope["path"] = "/sse/sse"
-        return await call_next(request)
-    # Route message endpoints with serverless fallback
-    if request.method == "POST" and (
-        request.url.path.startswith("/sse/messages") or request.url.path.startswith("/mcp/messages")
+    # Route all legacy SSE paths seamlessly to StreamableHTTP
+    if request.url.path in (
+        "/mcp", "/mcp/",
+        "/mcp/sse", "/mcp/sse/",
+        "/sse", "/sse/",
+        "/sse/sse", "/sse/sse/"
     ):
-        try:
-            transport = sse_application.routes[1].app.__self__
-            session_id_param = request.query_params.get("session_id")
-            from uuid import UUID
-            sess_uuid = UUID(hex=session_id_param) if session_id_param else None
-            has_session = sess_uuid in transport._read_stream_writers if sess_uuid else False
-        except Exception:
-            has_session = False
-
-        if not has_session:
-            # Serverless multi-instance fallback: route directly to StreamableHTTP (/mcp/)
-            request.scope["path"] = "/mcp/"
-            return await call_next(request)
-
-        if request.url.path.startswith("/mcp/messages"):
-            request.scope["path"] = request.url.path.replace("/mcp/messages", "/sse/messages")
-        return await call_next(request)
-
-    # Route StreamableHTTP endpoints seamlessly on /mcp
-    if request.url.path in ("/mcp", "/mcp/"):
         if request.method in ("GET", "HEAD"):
             return JSONResponse({
                 "status": "ok",
                 "protocol": "model-context-protocol",
                 "transport": "streamable-http",
-                "server": "Universal IDE MCP Gateway"
+                "server": "Universal IDE MCP Gateway",
+                "endpoint": "/mcp",
+                "instructions": "Connect via official StreamableHTTP by sending JSON-RPC 2.0 POST requests to /mcp"
             })
+        if request.method == "POST":
+            request.scope["path"] = "/mcp/"
+            return await call_next(request)
+
+    # Route message endpoints directly to StreamableHTTP
+    if request.url.path.startswith("/sse/messages") or request.url.path.startswith("/mcp/messages"):
+        request.scope["path"] = "/mcp/"
+        return await call_next(request)
+
     if request.url.path == "/mcp":
         request.scope["path"] = "/mcp/"
     return await call_next(request)
 
-# Mount StreamableHTTP at /mcp (Gemini Web Connected Apps connects directly to /mcp)
+# Mount StreamableHTTP at /mcp (primary) and /sse (backwards compatibility)
 app.mount("/mcp", streamable_http_app)
-
-# Mount SSE transport at /sse
-app.mount("/sse", sse_application)
+app.mount("/sse", streamable_http_app)
 
 
 class PollRequest(BaseModel):
-    wait_timeout: float = 15.0
+    wait_timeout: float = 1.5
 
 
 class GenerateTokenRequest(BaseModel):
@@ -156,14 +136,7 @@ async def get_bridge_script():
 
 
 
-@app.api_route("/mcp/sse", methods=["GET", "POST"], include_in_schema=False)
-async def mcp_sse_redirect(request: Request):
-    """Redirect legacy /mcp/sse to /sse/sse, preserving query parameters."""
-    query = str(request.url.query)
-    target = "/sse/sse"
-    if query:
-        target += f"?{query}"
-    return RedirectResponse(url=target, status_code=307)
+
 
 
 

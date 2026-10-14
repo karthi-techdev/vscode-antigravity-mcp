@@ -46,10 +46,11 @@ Connect any Web AI Chat in your browser to your local computer:
 
 | Platform | Endpoint URL | Format / Protocol |
 |---|---|---|
-| **Google Gemini Web** *(Connected Apps)* | `https://vscode-antigravity-mcp.vercel.app/mcp` | **StreamableHTTP** (Official Gemini MCP format) |
-| **ChatGPT Web** *(Custom GPTs)* | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Schema Actions** |
+| **Claude Web** *(Custom Connectors)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** (Official Claude Connector format) |
+| **Google Gemini Web** *(Connected Apps)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** (Official Gemini MCP format) |
+| **ChatGPT Web** *(Custom GPTs / Actions)* | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Schema Actions** (Direct REST) |
+| **ChatGPT Web** *(MCP Connectors)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** |
 | **Google AI Studio Web** | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Function Calling** |
-| **Claude Web / Browser Extensions** | `https://vscode-antigravity-mcp.vercel.app/sse/sse` | **SSE Stream** |
 | **Authentication Header** | `Authorization: Bearer YOUR_SECRET_KEY` | Zero registration needed; enter your secret key |
 | **URL Query Token Option** | `?token=YOUR_SECRET_KEY` | E.g., `https://.../mcp?token=YOUR_SECRET_KEY` |
 
@@ -129,7 +130,7 @@ Choose whichever Web AI chat you use in your browser:
 5. Click **Create / Save** (top right) ➔ Select **Only me**.
 6. Open your new GPT in `chatgpt.com` and start chatting directly with your local computer!
 
-*(Or, if using a Chrome extension like "ChatGPT MCP Connector", simply paste `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY` into the extension settings).*
+*(Or, if using an MCP browser connector, simply enter `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY`).*
 
 ---
 
@@ -155,12 +156,16 @@ Choose whichever Web AI chat you use in your browser:
 
 ---
 
-#### 🟣 3. Claude Web (`claude.ai`)
-1. Open [claude.ai](https://claude.ai) in your browser.
-2. Using any Web MCP extension for Chrome/Edge:
-   * **Server URL**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
-   * **Transport**: `SSE`
-3. Claude Web can now discover and run all 17 IDE tools directly on your computer!
+#### 🟣 3. Claude Web (`claude.ai` Custom Connectors)
+1. Open **[claude.ai](https://claude.ai)** in your browser.
+2. Click your user profile icon (bottom left) ➔ **Settings** ➔ **Connectors** (or click **+ Add** ➔ **Custom connector**).
+3. In the modal:
+   * **Name**: `IDE`
+   * **URL**:
+     ```text
+     https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY
+     ```
+4. Click **Continue**! Claude connects using official **Streamable HTTP** with **zero deprecation warnings** and instantly discovers all 17 tools!
 
 ---
 
