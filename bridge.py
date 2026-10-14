@@ -571,38 +571,104 @@ class LocalBridgeAgent:
 
     async def execute_task(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
         p = parameters or {}
+
+        def _get(*keys, default=None):
+            for k in keys:
+                if k in p and p[k] is not None:
+                    return p[k]
+            return default
+
+        # Multi-Project Navigation
         if tool_name in ("list_projects", "get_projects"):
             return self.executor.list_projects()
         elif tool_name in ("set_active_project", "switch_project"):
-            return self.executor.set_active_project(p.get("project_name", ""))
+            return self.executor.set_active_project(_get("project_name", "project", "name", default=""))
         elif tool_name in ("get_active_project", "current_project"):
             return self.executor.get_active_project()
+
+        # Workspace Files & Directory Operations
         elif tool_name in ("read_workspace_file", "read_file"):
-            return self.executor.read_file(p.get("path", ""), p.get("max_lines", 500), p.get("start_line", 1), project=p.get("project"))
+            return self.executor.read_file(
+                path=_get("path", "file_path", "filepath", "target", "file", default=""),
+                max_lines=int(_get("max_lines", "limit", default=500)),
+                start_line=int(_get("start_line", "offset", default=1)),
+                project=_get("project")
+            )
         elif tool_name in ("write_workspace_file", "write_file"):
-            return self.executor.write_file(p.get("path", ""), p.get("content", ""), project=p.get("project"))
+            return self.executor.write_file(
+                path=_get("path", "file_path", "filepath", "target", "file", default=""),
+                content=_get("content", "text", "file_content", "body", "data", default=""),
+                project=_get("project")
+            )
         elif tool_name in ("edit_workspace_file", "edit_file"):
-            return self.executor.edit_file(p.get("path", ""), p.get("old_str", ""), p.get("new_str", ""), project=p.get("project"))
+            return self.executor.edit_file(
+                path=_get("path", "file_path", "filepath", "target", "file", default=""),
+                old_str=_get("old_str", "old_text", "search", "target", "old_content", default=""),
+                new_str=_get("new_str", "new_text", "replacement", "replace", "new_content", default=""),
+                project=_get("project")
+            )
         elif tool_name in ("create_directory", "create_workspace_directory", "mkdir"):
-            return self.executor.create_directory(p.get("path", ""), project=p.get("project"))
-        elif tool_name in ("delete_file", "delete_workspace_file", "remove_file"):
-            return self.executor.delete_file(p.get("path", ""), recursive=p.get("recursive", False), project=p.get("project"))
+            return self.executor.create_directory(
+                path=_get("path", "directory", "dir_path", "dir", default=""),
+                project=_get("project")
+            )
+        elif tool_name in ("delete_file", "delete_workspace_file", "remove_file", "rm"):
+            return self.executor.delete_file(
+                path=_get("path", "file_path", "filepath", "target", default=""),
+                recursive=bool(_get("recursive", "force", default=False)),
+                project=_get("project")
+            )
         elif tool_name in ("move_or_rename_file", "move_file", "rename_file", "move_workspace_file"):
-            return self.executor.move_or_rename_file(p.get("source_path", ""), p.get("destination_path", ""), overwrite=p.get("overwrite", False), project=p.get("project"))
+            return self.executor.move_or_rename_file(
+                source_path=_get("source_path", "source", "src", "old_path", default=""),
+                destination_path=_get("destination_path", "destination", "dest", "new_path", default=""),
+                overwrite=bool(_get("overwrite", default=False)),
+                project=_get("project")
+            )
         elif tool_name in ("get_file_info", "file_info", "get_workspace_file_info"):
-            return self.executor.get_file_info(p.get("path", ""), project=p.get("project"))
-        elif tool_name in ("list_workspace_directory", "list_directory"):
-            return self.executor.list_directory(p.get("path", "."), p.get("max_depth", 2), project=p.get("project"))
-        elif tool_name in ("search_workspace_files", "search_files"):
-            return self.executor.search_files(p.get("query", ""), p.get("path", "."), p.get("file_pattern", "*"), project=p.get("project"))
+            return self.executor.get_file_info(
+                path=_get("path", "file_path", "filepath", "target", default=""),
+                project=_get("project")
+            )
+        elif tool_name in ("list_workspace_directory", "list_directory", "ls"):
+            return self.executor.list_directory(
+                path=_get("path", "directory", "dir_path", default="."),
+                max_depth=int(_get("max_depth", "depth", default=2)),
+                project=_get("project")
+            )
+        elif tool_name in ("search_workspace_files", "search_files", "grep"):
+            return self.executor.search_files(
+                query=_get("query", "search_query", "pattern", "text", "term", default=""),
+                path=_get("path", "directory", default="."),
+                file_pattern=_get("file_pattern", "pattern", "filter", default="*"),
+                project=_get("project")
+            )
+
+        # Terminal & Shell Execution
         elif tool_name in ("run_terminal_command", "execute_command"):
-            return self.executor.execute_command(p.get("command", ""), p.get("timeout_seconds", 30), project=p.get("project"))
-        elif tool_name in ("run_powershell_command", "run_powershell"):
-            return self.executor.run_powershell(p.get("command", ""), p.get("timeout_seconds", 60), project=p.get("project"))
-        elif tool_name in ("run_cmd_command", "run_cmd"):
-            return self.executor.run_cmd(p.get("command", ""), p.get("timeout_seconds", 60), project=p.get("project"))
-        elif tool_name in ("run_git_command", "run_git", "git_command"):
-            return self.executor.run_git(p.get("subcommand", p.get("command", "")), p.get("timeout_seconds", 60), project=p.get("project"))
+            return self.executor.execute_command(
+                command=_get("command", "cmd", "script", default=""),
+                timeout_seconds=int(_get("timeout_seconds", "timeout", default=30)),
+                project=_get("project")
+            )
+        elif tool_name in ("run_powershell_command", "run_powershell", "powershell"):
+            return self.executor.run_powershell(
+                command=_get("command", "cmd", "script", default=""),
+                timeout_seconds=int(_get("timeout_seconds", "timeout", default=60)),
+                project=_get("project")
+            )
+        elif tool_name in ("run_cmd_command", "run_cmd", "cmd"):
+            return self.executor.run_cmd(
+                command=_get("command", "cmd", "script", default=""),
+                timeout_seconds=int(_get("timeout_seconds", "timeout", default=60)),
+                project=_get("project")
+            )
+        elif tool_name in ("run_git_command", "run_git", "git_command", "git"):
+            return self.executor.run_git(
+                subcommand=_get("subcommand", "command", "cmd", "git_cmd", default=""),
+                timeout_seconds=int(_get("timeout_seconds", "timeout", default=60)),
+                project=_get("project")
+            )
         elif tool_name in ("get_workspace_context", "get_context"):
             return self.executor.get_context()
         else:
