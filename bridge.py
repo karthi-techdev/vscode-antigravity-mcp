@@ -496,24 +496,69 @@ class LocalIDEExecutor:
             "status": "running_in_background"
         }
 
+    def _run_process_safe(self, cmd_args, cwd: Path, timeout_seconds: int, shell: bool = False) -> Dict[str, Any]:
+        """
+        Executes a subprocess safely with process group isolation and guaranteed termination.
+        On Windows, uses taskkill /F /T /PID to ensure all child processes are cleanly killed on timeout.
+        """
+        creationflags = 0
+        if sys.platform == "win32":
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        try:
+            proc = subprocess.Popen(
+                cmd_args,
+                cwd=str(cwd),
+                shell=shell,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                creationflags=creationflags
+            )
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                return {
+                    "exit_code": proc.returncode,
+                    "stdout": stdout or "",
+                    "stderr": stderr or ""
+                }
+            except subprocess.TimeoutExpired:
+                if sys.platform == "win32":
+                    try:
+                        subprocess.run(
+                            f"taskkill /F /T /PID {proc.pid}",
+                            shell=True,
+                            capture_output=True,
+                            timeout=5
+                        )
+                    except Exception:
+                        proc.kill()
+                else:
+                    proc.kill()
+                try:
+                    stdout, stderr = proc.communicate(timeout=2)
+                except Exception:
+                    stdout, stderr = "", ""
+                return {
+                    "exit_code": -1,
+                    "stdout": stdout or "",
+                    "stderr": f"Command timed out after {timeout_seconds}s and was terminated."
+                }
+        except Exception as e:
+            return {
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Execution failed: {str(e)}"
+            }
+
     def execute_command(self, command: str, timeout_seconds: int = 30, project: Optional[str] = None) -> Dict[str, Any]:
         cwd = self._resolve_safe_path(".", project=project)
         if self._is_dev_server_command(command):
             return self._launch_background_server(command, cwd, shell_type="terminal", project=project)
-        try:
-            res = subprocess.run(
-                command,
-                cwd=str(cwd),
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds
-            )
-            return {"command": command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
-        except subprocess.TimeoutExpired:
-            return {"command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Command timed out after {timeout_seconds}s"}
-        except Exception as e:
-            return {"command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Execution failed: {str(e)}"}
+        res = self._run_process_safe(command, cwd=cwd, timeout_seconds=timeout_seconds, shell=True)
+        return {"command": command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
     def run_powershell(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
         cwd = self._resolve_safe_path(".", project=project)
@@ -521,37 +566,22 @@ class LocalIDEExecutor:
             return self._launch_background_server(command, cwd, shell_type="powershell", project=project)
         ps_bin = "powershell.exe" if sys.platform == "win32" else "pwsh"
         ps_cmd = [ps_bin, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
-        try:
-            res = subprocess.run(ps_cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds)
-            return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
-        except subprocess.TimeoutExpired:
-            return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"PowerShell command timed out after {timeout_seconds}s"}
-        except Exception as e:
-            return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"PowerShell execution failed: {str(e)}"}
+        res = self._run_process_safe(ps_cmd, cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
+        return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
     def run_cmd(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
         cwd = self._resolve_safe_path(".", project=project)
         if self._is_dev_server_command(command):
             return self._launch_background_server(command, cwd, shell_type="cmd", project=project)
         cmd_args = ["cmd.exe", "/c", command] if sys.platform == "win32" else ["sh", "-c", command]
-        try:
-            res = subprocess.run(cmd_args, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds)
-            return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
-        except subprocess.TimeoutExpired:
-            return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"CMD command timed out after {timeout_seconds}s"}
-        except Exception as e:
-            return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"CMD execution failed: {str(e)}"}
+        res = self._run_process_safe(cmd_args, cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
+        return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
     def run_git(self, subcommand: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
         cwd = self._resolve_safe_path(".", project=project)
         full_command = f"git {subcommand}".strip()
-        try:
-            res = subprocess.run(full_command, cwd=str(cwd), shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds)
-            return {"git_command": full_command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
-        except subprocess.TimeoutExpired:
-            return {"git_command": full_command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Git command timed out after {timeout_seconds}s"}
-        except Exception as e:
-            return {"git_command": full_command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Git execution failed: {str(e)}"}
+        res = self._run_process_safe(full_command, cwd=cwd, timeout_seconds=timeout_seconds, shell=True)
+        return {"git_command": full_command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
     def get_context(self) -> Dict[str, Any]:
         return self.get_active_project()
@@ -569,7 +599,7 @@ class LocalBridgeAgent:
         }
         self.running = False
 
-    async def execute_task(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+    def _execute_sync(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
         p = parameters or {}
 
         def _get(*keys, default=None):
@@ -674,17 +704,21 @@ class LocalBridgeAgent:
         else:
             raise NotImplementedError(f"Tool '{tool_name}' is not recognized.")
 
+    async def execute_task(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        """Runs the tool in an asynchronous worker thread to prevent blocking the event loop."""
+        return await asyncio.to_thread(self._execute_sync, tool_name, parameters)
+
     async def _keepalive_loop(self, client: httpx.AsyncClient):
-        """Pings /health every 60 seconds to keep the Vercel serverless function warm and alive."""
+        """Pings both /health and /api/relay/heartbeat every 20 seconds to keep serverless containers active and warm."""
         health_url = f"{self.server_url}/health"
+        heartbeat_url = f"{self.server_url}/api/relay/heartbeat"
         while self.running:
             try:
-                await asyncio.sleep(60)
+                await asyncio.sleep(20)
                 if not self.running:
                     break
-                r = await client.get(health_url, headers=self.headers, timeout=10.0)
-                if r.status_code == 200:
-                    print(f"💓 [{datetime.now().strftime('%H:%M:%S')}] Keepalive: Pinned /health to keep Vercel alive.")
+                await client.get(health_url, timeout=5.0)
+                await client.post(heartbeat_url, headers=self.headers, timeout=5.0)
             except Exception:
                 pass
 
@@ -848,10 +882,15 @@ def main():
         sys.exit(1)
 
     agent = LocalBridgeAgent(server_url=args.server, auth_token=args.key, workspace_dir=args.dir, projects_root=args.root)
-    try:
-        asyncio.run(agent.run())
-    except KeyboardInterrupt:
-        print("\n👋 Disconnected.")
+    while True:
+        try:
+            asyncio.run(agent.run())
+        except KeyboardInterrupt:
+            print("\n👋 Disconnected by user.")
+            break
+        except Exception as e:
+            print(f"⚠️ Bridge connection interrupted ({e}). Auto-reconnecting in 3 seconds...")
+            time.sleep(3)
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
     # automatically route to the user's active local bridge!
     import time
     now = time.time()
-    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 90.0]
+    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 120.0]
     if active_users:
         return max(active_users, key=lambda u: relay_manager.client_heartbeats.get(u, 0))
 
@@ -53,6 +53,10 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
     from server.auth import DYNAMIC_TOKENS
     if DYNAMIC_TOKENS:
         return list(DYNAMIC_TOKENS.values())[-1]
+
+    from server.config import STATIC_TOKENS
+    if STATIC_TOKENS:
+        return list(STATIC_TOKENS.values())[0]
 
     raise PermissionError(
         "No active local IDE bridge detected. Please start your local companion: "

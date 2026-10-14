@@ -52,7 +52,7 @@ class RelayManager:
     def update_heartbeat(self, user_id: str):
         self.client_heartbeats[user_id] = time.time()
 
-    def is_client_online(self, user_id: str, timeout_seconds: float = 90.0) -> bool:
+    def is_client_online(self, user_id: str, timeout_seconds: float = 120.0) -> bool:
         last_seen = self.client_heartbeats.get(user_id)
         if not last_seen:
             return False
@@ -61,19 +61,9 @@ class RelayManager:
     async def dispatch_task(self, user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
         """
         Dispatches a tool call task to the user's local IDE companion and awaits the result.
+        In multi-instance serverless environments, we immediately enqueue the task so that
+        the user's high-frequency polling workers pick it up without premature rejection.
         """
-        if not self.is_client_online(user_id):
-            now = time.time()
-            active_clients = [uid for uid, t in self.client_heartbeats.items() if (now - t) < 90.0]
-            if active_clients:
-                user_id = max(active_clients, key=lambda u: self.client_heartbeats.get(u, 0))
-            else:
-                raise RuntimeError(
-                    f"No active local IDE bridge detected. "
-                    "Please run the local bridge client on your computer: "
-                    "`python bridge.py --key <your-key>`"
-                )
-
         task = RelayTask(user_id, tool_name, parameters)
 
         async with self._lock:
@@ -82,7 +72,7 @@ class RelayManager:
             self.pending_tasks[user_id].append(task)
             self.active_tasks[task.task_id] = task
 
-            # Notify any long-polling local client for this user
+            # Notify any long-polling local client for this user on this container
             if user_id in self.user_task_events:
                 self.user_task_events[user_id].set()
 
@@ -94,6 +84,13 @@ class RelayManager:
                 self.active_tasks.pop(task.task_id, None)
                 if user_id in self.pending_tasks and task in self.pending_tasks[user_id]:
                     self.pending_tasks[user_id].remove(task)
+
+            if not self.is_client_online(user_id):
+                raise RuntimeError(
+                    f"No active local IDE bridge detected. "
+                    "Please run the local bridge client on your computer: "
+                    "`python bridge.py --key <your-key>`"
+                )
             raise TimeoutError(
                 f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'."
             )

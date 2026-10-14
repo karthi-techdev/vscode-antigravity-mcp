@@ -41,8 +41,8 @@ class LocalBridgeAgent:
         }
         self.running = False
 
-    async def execute_task(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
-        """Route incoming tool request to the appropriate executor method."""
+    def _execute_sync(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        """Route incoming tool request to the appropriate executor method synchronously."""
         p = parameters or {}
 
         def _get(*keys, default=None):
@@ -145,17 +145,21 @@ class LocalBridgeAgent:
         else:
             raise NotImplementedError(f"Tool '{tool_name}' is not recognized by the local bridge.")
 
+    async def execute_task(self, tool_name: str, parameters: Dict[str, Any]) -> Any:
+        """Runs tool in an asynchronous worker thread to prevent blocking event loop."""
+        return await asyncio.to_thread(self._execute_sync, tool_name, parameters)
+
     async def _keepalive_loop(self, client: httpx.AsyncClient):
-        """Pings /health every 60 seconds to keep the Vercel serverless function warm and alive."""
+        """Pings both /health and /api/relay/heartbeat every 20 seconds to keep serverless containers active and warm."""
         health_url = f"{self.server_url}/health"
+        heartbeat_url = f"{self.server_url}/api/relay/heartbeat"
         while self.running:
             try:
-                await asyncio.sleep(60)
+                await asyncio.sleep(20)
                 if not self.running:
                     break
-                r = await client.get(health_url, headers=self.headers, timeout=10.0)
-                if r.status_code == 200:
-                    print(f"💓 [{datetime.now().strftime('%H:%M:%S')}] Keepalive: Pinned /health to keep Vercel alive.")
+                await client.get(health_url, timeout=5.0)
+                await client.post(heartbeat_url, headers=self.headers, timeout=5.0)
             except Exception:
                 pass
 
@@ -319,16 +323,21 @@ def main():
         print("Specify --key <your-token> or set MCP_AUTH_TOKEN in environment / .env file.")
         sys.exit(1)
 
-    agent = LocalBridgeAgent(
-        server_url=args.server,
-        auth_token=args.key,
-        workspace_dir=args.dir,
-        projects_root=args.root
-    )
-    try:
-        asyncio.run(agent.run())
-    except KeyboardInterrupt:
-        print("\n👋 Disconnected.")
+    while True:
+        try:
+            agent = LocalBridgeAgent(
+                server_url=args.server,
+                auth_token=args.key,
+                workspace_dir=args.dir,
+                projects_root=args.root
+            )
+            asyncio.run(agent.run())
+        except KeyboardInterrupt:
+            print("\n👋 Disconnected by user.")
+            break
+        except Exception as e:
+            print(f"⚠️ Bridge connection interrupted ({e}). Auto-reconnecting in 3 seconds...")
+            time.sleep(3)
 
 
 if __name__ == "__main__":
