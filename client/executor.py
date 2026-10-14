@@ -473,9 +473,44 @@ class LocalIDEExecutor:
             "matches": matches
         }
 
+    DEV_SERVER_KEYWORDS = (
+        "npm run dev", "npm start", "yarn dev", "yarn start", "pnpm dev", "pnpm start",
+        "vite", "next dev", "uvicorn", "flask run", "python -m http.server"
+    )
+
+    def _is_dev_server_command(self, cmd: str) -> bool:
+        clean = cmd.strip().lower()
+        if clean.startswith("start "):
+            return False
+        return any(k in clean for k in self.DEV_SERVER_KEYWORDS)
+
+    def _launch_background_server(self, command: str, cwd: Path, shell_type: str = "terminal", project: Optional[str] = None) -> Dict[str, Any]:
+        proj_name = project or self.active_project or "Project"
+        if sys.platform == "win32":
+            subprocess.Popen(f'start "{proj_name} Dev Server" cmd.exe /k "{command}"', cwd=str(cwd), shell=True)
+        else:
+            subprocess.Popen(command, cwd=str(cwd), shell=True, start_new_session=True)
+
+        return {
+            "shell": shell_type,
+            "command": command,
+            "cwd": str(cwd),
+            "exit_code": 0,
+            "stdout": (
+                f"✅ Dev server started in a new terminal window for '{proj_name}'.\n"
+                f"Command: {command}\n"
+                f"Directory: {cwd}\n"
+                f"The server is now actively running in the background."
+            ),
+            "stderr": "",
+            "status": "running_in_background"
+        }
+
     def execute_command(self, command: str, timeout_seconds: int = 30, project: Optional[str] = None) -> Dict[str, Any]:
         """Execute a shell command inside the active project directory."""
         cwd = self._resolve_safe_path(".", project=project)
+        if self._is_dev_server_command(command):
+            return self._launch_background_server(command, cwd, shell_type="terminal", project=project)
         try:
             res = subprocess.run(
                 command,
@@ -512,6 +547,8 @@ class LocalIDEExecutor:
     def run_powershell(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
         """Execute a PowerShell command with full PowerShell environment and UTF-8 encoding."""
         cwd = self._resolve_safe_path(".", project=project)
+        if self._is_dev_server_command(command):
+            return self._launch_background_server(command, cwd, shell_type="powershell", project=project)
         ps_bin = "powershell.exe" if sys.platform == "win32" else "pwsh"
         ps_cmd = [
             ps_bin,
@@ -560,6 +597,8 @@ class LocalIDEExecutor:
     def run_cmd(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
         """Execute a Command Prompt (cmd.exe) command."""
         cwd = self._resolve_safe_path(".", project=project)
+        if self._is_dev_server_command(command):
+            return self._launch_background_server(command, cwd, shell_type="cmd", project=project)
         cmd_args = ["cmd.exe", "/c", command] if sys.platform == "win32" else ["sh", "-c", command]
         try:
             res = subprocess.run(
