@@ -114,9 +114,11 @@ Once connected, you can manage all your projects directly in your chat:
 | `edit_workspace_file(path, old, new)` | Finds and replaces specific code blocks in a file. |
 | `list_workspace_directory(path)` | Explores directories and inspects the file tree. |
 | `search_workspace_files(query)` | Searches for text, classes, or symbols across your codebase. |
-| `run_terminal_command(command)` | Runs commands (tests, builds, lints) in your project. |
+| `run_terminal_command(command)` | Runs a general shell command in the project. |
+| `run_powershell_command(command)` | Executes a native PowerShell command/script with full environment and UTF-8 support. |
+| `run_cmd_command(command)` | Executes a Command Prompt (cmd.exe) command or batch script. |
+| `run_git_command(subcommand)` | Executes Git operations (e.g. `status`, `diff`, `log`, `branch`, `commit`, `pull`). |
 | `get_workspace_context()` | Queries Git branch, status, and modified files. |
-
 
 ---
 

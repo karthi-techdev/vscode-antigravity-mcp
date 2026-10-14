@@ -92,6 +92,24 @@ class LocalBridgeAgent:
                 timeout_seconds=p.get("timeout_seconds", 30),
                 project=p.get("project")
             )
+        elif tool_name in ("run_powershell_command", "run_powershell"):
+            return self.executor.run_powershell(
+                command=p.get("command", ""),
+                timeout_seconds=p.get("timeout_seconds", 60),
+                project=p.get("project")
+            )
+        elif tool_name in ("run_cmd_command", "run_cmd"):
+            return self.executor.run_cmd(
+                command=p.get("command", ""),
+                timeout_seconds=p.get("timeout_seconds", 60),
+                project=p.get("project")
+            )
+        elif tool_name in ("run_git_command", "run_git", "git_command"):
+            return self.executor.run_git(
+                subcommand=p.get("subcommand", p.get("command", "")),
+                timeout_seconds=p.get("timeout_seconds", 60),
+                project=p.get("project")
+            )
         elif tool_name in ("get_workspace_context", "get_context"):
             return self.executor.get_context()
         else:

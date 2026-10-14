@@ -352,6 +352,40 @@ class LocalIDEExecutor:
         except Exception as e:
             return {"command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Execution failed: {str(e)}"}
 
+    def run_powershell(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
+        cwd = self._resolve_safe_path(".", project=project)
+        ps_bin = "powershell.exe" if sys.platform == "win32" else "pwsh"
+        ps_cmd = [ps_bin, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+        try:
+            res = subprocess.run(ps_cmd, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds)
+            return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
+        except subprocess.TimeoutExpired:
+            return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"PowerShell command timed out after {timeout_seconds}s"}
+        except Exception as e:
+            return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"PowerShell execution failed: {str(e)}"}
+
+    def run_cmd(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
+        cwd = self._resolve_safe_path(".", project=project)
+        cmd_args = ["cmd.exe", "/c", command] if sys.platform == "win32" else ["sh", "-c", command]
+        try:
+            res = subprocess.run(cmd_args, cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds)
+            return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
+        except subprocess.TimeoutExpired:
+            return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"CMD command timed out after {timeout_seconds}s"}
+        except Exception as e:
+            return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"CMD execution failed: {str(e)}"}
+
+    def run_git(self, subcommand: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
+        cwd = self._resolve_safe_path(".", project=project)
+        full_command = f"git {subcommand}".strip()
+        try:
+            res = subprocess.run(full_command, cwd=str(cwd), shell=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout_seconds)
+            return {"git_command": full_command, "cwd": str(cwd), "exit_code": res.returncode, "stdout": res.stdout, "stderr": res.stderr}
+        except subprocess.TimeoutExpired:
+            return {"git_command": full_command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Git command timed out after {timeout_seconds}s"}
+        except Exception as e:
+            return {"git_command": full_command, "cwd": str(cwd), "exit_code": -1, "stdout": "", "stderr": f"Git execution failed: {str(e)}"}
+
     def get_context(self) -> Dict[str, Any]:
         return self.get_active_project()
 
@@ -388,6 +422,12 @@ class LocalBridgeAgent:
             return self.executor.search_files(p.get("query", ""), p.get("path", "."), p.get("file_pattern", "*"), project=p.get("project"))
         elif tool_name in ("run_terminal_command", "execute_command"):
             return self.executor.execute_command(p.get("command", ""), p.get("timeout_seconds", 30), project=p.get("project"))
+        elif tool_name in ("run_powershell_command", "run_powershell"):
+            return self.executor.run_powershell(p.get("command", ""), p.get("timeout_seconds", 60), project=p.get("project"))
+        elif tool_name in ("run_cmd_command", "run_cmd"):
+            return self.executor.run_cmd(p.get("command", ""), p.get("timeout_seconds", 60), project=p.get("project"))
+        elif tool_name in ("run_git_command", "run_git", "git_command"):
+            return self.executor.run_git(p.get("subcommand", p.get("command", "")), p.get("timeout_seconds", 60), project=p.get("project"))
         elif tool_name in ("get_workspace_context", "get_context"):
             return self.executor.get_context()
         else:

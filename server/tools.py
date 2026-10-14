@@ -190,7 +190,7 @@ def register_tools(mcp: FastMCP):
 
     @mcp.tool(
         name="run_terminal_command",
-        description="Execute a shell command inside the active project directory."
+        description="Execute a general shell command inside the active project directory."
     )
     async def run_terminal_command(
         command: str,
@@ -203,6 +203,57 @@ def register_tools(mcp: FastMCP):
             user_id=user_id,
             tool_name="run_terminal_command",
             parameters={"command": command, "timeout_seconds": timeout_seconds, "project": project}
+        )
+
+    @mcp.tool(
+        name="run_powershell_command",
+        description="Execute a PowerShell command or script in the active project workspace with full PowerShell environment and UTF-8 support."
+    )
+    async def run_powershell_command(
+        command: str,
+        timeout_seconds: int = 60,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="run_powershell_command",
+            parameters={"command": command, "timeout_seconds": timeout_seconds, "project": project}
+        )
+
+    @mcp.tool(
+        name="run_cmd_command",
+        description="Execute a Command Prompt (cmd.exe) command or batch command in the active project workspace."
+    )
+    async def run_cmd_command(
+        command: str,
+        timeout_seconds: int = 60,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="run_cmd_command",
+            parameters={"command": command, "timeout_seconds": timeout_seconds, "project": project}
+        )
+
+    @mcp.tool(
+        name="run_git_command",
+        description="Execute a Git command (e.g. 'status --short', 'diff', 'log -n 5', 'branch -a', 'commit -m \"...\"', 'add .') in the project repository."
+    )
+    async def run_git_command(
+        subcommand: str,
+        timeout_seconds: int = 60,
+        project: Optional[str] = None,
+        token: Optional[str] = None
+    ) -> Dict[str, Any]:
+        user_id = get_user_id_for_tool(token)
+        return await relay_manager.dispatch_task(
+            user_id=user_id,
+            tool_name="run_git_command",
+            parameters={"subcommand": subcommand, "timeout_seconds": timeout_seconds, "project": project}
         )
 
     @mcp.tool(

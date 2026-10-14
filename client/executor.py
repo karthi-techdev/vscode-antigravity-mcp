@@ -1,4 +1,5 @@
 import os
+import sys
 import subprocess
 import fnmatch
 from pathlib import Path
@@ -375,6 +376,134 @@ class LocalIDEExecutor:
                 "exit_code": -1,
                 "stdout": "",
                 "stderr": f"Execution failed: {str(e)}"
+            }
+
+    def run_powershell(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
+        """Execute a PowerShell command with full PowerShell environment and UTF-8 encoding."""
+        cwd = self._resolve_safe_path(".", project=project)
+        ps_bin = "powershell.exe" if sys.platform == "win32" else "pwsh"
+        ps_cmd = [
+            ps_bin,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy", "Bypass",
+            "-Command", command
+        ]
+        try:
+            res = subprocess.run(
+                ps_cmd,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds
+            )
+            return {
+                "shell": "powershell",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": res.returncode,
+                "stdout": res.stdout,
+                "stderr": res.stderr
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "shell": "powershell",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"PowerShell command timed out after {timeout_seconds} seconds"
+            }
+        except Exception as e:
+            return {
+                "shell": "powershell",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"PowerShell execution failed: {str(e)}"
+            }
+
+    def run_cmd(self, command: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
+        """Execute a Command Prompt (cmd.exe) command."""
+        cwd = self._resolve_safe_path(".", project=project)
+        cmd_args = ["cmd.exe", "/c", command] if sys.platform == "win32" else ["sh", "-c", command]
+        try:
+            res = subprocess.run(
+                cmd_args,
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds
+            )
+            return {
+                "shell": "cmd",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": res.returncode,
+                "stdout": res.stdout,
+                "stderr": res.stderr
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "shell": "cmd",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"CMD command timed out after {timeout_seconds} seconds"
+            }
+        except Exception as e:
+            return {
+                "shell": "cmd",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"CMD execution failed: {str(e)}"
+            }
+
+    def run_git(self, subcommand: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
+        """Execute a Git command in the active or specified project directory."""
+        cwd = self._resolve_safe_path(".", project=project)
+        full_command = f"git {subcommand}".strip()
+        try:
+            res = subprocess.run(
+                full_command,
+                cwd=str(cwd),
+                shell=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_seconds
+            )
+            return {
+                "git_command": full_command,
+                "cwd": str(cwd),
+                "exit_code": res.returncode,
+                "stdout": res.stdout,
+                "stderr": res.stderr
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                "git_command": full_command,
+                "cwd": str(cwd),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Git command timed out after {timeout_seconds} seconds"
+            }
+        except Exception as e:
+            return {
+                "git_command": full_command,
+                "cwd": str(cwd),
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": f"Git execution failed: {str(e)}"
             }
 
     def get_context(self) -> Dict[str, Any]:
