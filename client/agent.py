@@ -13,10 +13,7 @@ _root = Path(__file__).parent.parent.resolve()
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
 
-try:
-    from client.executor import LocalIDEExecutor
-except ImportError:
-    from executor import LocalIDEExecutor
+from client.executor import LocalIDEExecutor
 
 if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     try:
