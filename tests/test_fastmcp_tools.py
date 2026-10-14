@@ -93,3 +93,40 @@ async def test_fastmcp_new_file_tools():
         assert "data.json" in content_text
         assert "file" in content_text
 
+
+@pytest.mark.asyncio
+async def test_streamable_http_gemini_handshake():
+    from server.app import app
+    from starlette.testclient import TestClient
+
+    with TestClient(app) as client:
+        # 1. Probe check (GET /mcp)
+        r_get = client.get("/mcp")
+        assert r_get.status_code == 200
+        assert "model-context-protocol" in r_get.text
+
+        # 2. Initialize handshake (POST /mcp)
+        r_init = client.post("/mcp", json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "gemini-web", "version": "1.0"}
+            }
+        })
+        assert r_init.status_code == 200
+        assert "serverInfo" in r_init.text
+
+        # 3. List tools (POST /mcp)
+        r_tools = client.post("/mcp", json={
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/list",
+            "params": {}
+        })
+        assert r_tools.status_code == 200
+        assert "list_projects" in r_tools.text
+
+

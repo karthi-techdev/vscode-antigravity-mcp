@@ -44,13 +44,14 @@ Cloud AI models (Gemini Web, ChatGPT) cannot directly reach into your computer b
 
 Connect any Web AI Chat in your browser to your local computer:
 
-| Parameter | Value | Notes |
+| Platform | Endpoint URL | Format / Protocol |
 |---|---|---|
-| **Hosted Server URL** | `https://vscode-antigravity-mcp.vercel.app` | Base hosted gateway on Vercel |
-| **OpenAPI Schema URL** | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **For ChatGPT Web (Custom GPTs)** & Google AI Studio |
-| **MCP SSE Endpoint** | `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY` | **For Gemini Web, Claude Web & Web MCP extensions** |
-| **Authentication Type** | `Bearer` token or `?token=` query parameter | Zero pre-registration needed |
-| **Your Secret Key** | Any private passphrase you choose (e.g. `karthi_secret_99`) | Isolates your computer session completely |
+| **Google Gemini Web** *(Connected Apps)* | `https://vscode-antigravity-mcp.vercel.app/mcp` | **StreamableHTTP** (Official Gemini MCP format) |
+| **ChatGPT Web** *(Custom GPTs)* | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Schema Actions** |
+| **Google AI Studio Web** | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Function Calling** |
+| **Claude Web / Browser Extensions** | `https://vscode-antigravity-mcp.vercel.app/sse/sse` | **SSE Stream** |
+| **Authentication Header** | `Authorization: Bearer YOUR_SECRET_KEY` | Zero registration needed; enter your secret key |
+| **URL Query Token Option** | `?token=YOUR_SECRET_KEY` | E.g., `https://.../mcp?token=YOUR_SECRET_KEY` |
 
 ---
 
@@ -134,19 +135,26 @@ Choose whichever Web AI chat you use in your browser:
 
 #### 🔵 2. Gemini Web (`gemini.google.com` & Google AI Studio)
 
-##### A. Google AI Studio Web (`aistudio.google.com`) - Native Web Chat:
+##### A. Gemini Web (`gemini.google.com`) - Native Connected Apps (Shown in screenshot!):
+1. In your browser, open **[gemini.google.com](https://gemini.google.com)**.
+2. Go to **Settings** ➔ **Connected apps** (or Extensions) ➔ click **Connect to an MCP server**.
+3. In **MCP server URL**, enter:
+   ```text
+   https://vscode-antigravity-mcp.vercel.app/mcp
+   ```
+4. Click **Additional settings** (*Show more*):
+   * Add header:
+     * **Header Name**: `Authorization`
+     * **Header Value**: `Bearer YOUR_SECRET_KEY` (e.g. `Bearer D4_PROJECT_MCP_SERVER`)
+   * *(Alternatively, you can include your token in the URL: `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY`)*
+5. Click **Next** ➔ Connected! Gemini can now discover and run tools directly on your local computer!
+
+##### B. Google AI Studio Web (`aistudio.google.com`) - Native Web Chat:
 1. Open [aistudio.google.com](https://aistudio.google.com) in your browser and start a new chat.
 2. In the right-hand panel under **Tools** ➔ enable **Function Calling**.
 3. Import the OpenAPI schema: `https://vscode-antigravity-mcp.vercel.app/openapi.json`.
 4. Add Header: `Authorization: Bearer YOUR_SECRET_KEY`.
 5. Now chat with Gemini 1.5 Pro in your browser — it invokes actions directly on your local computer!
-
-##### B. Gemini Web (`gemini.google.com`) - via Web MCP Extension:
-1. Install an MCP extension for Chrome/Edge (e.g., *Model Context Protocol for Web* or *MCP Browser Assistant*).
-2. In the extension settings:
-   * **MCP Server URL**: `https://vscode-antigravity-mcp.vercel.app/mcp/sse?token=YOUR_SECRET_KEY`
-   * **Transport**: `SSE`
-3. Open `gemini.google.com` and ask Gemini to inspect or modify your projects!
 
 ---
 

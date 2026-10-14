@@ -16,6 +16,9 @@ from server.auth import (
 from server.relay import relay_manager, TaskResultSubmission
 from server.tools import register_tools
 
+from contextlib import asynccontextmanager, AsyncExitStack
+from fastapi.responses import RedirectResponse, PlainTextResponse, JSONResponse
+
 # Initialize FastMCP Server
 mcp_server = FastMCP(
     name="Antigravity IDE Remote Bridge",
@@ -23,15 +26,25 @@ mcp_server = FastMCP(
 )
 register_tools(mcp_server)
 
-# Create FastMCP SSE application
+# 1. StreamableHTTP app (Required by Google Gemini Web Connected Apps & modern MCP clients)
+streamable_http_app = mcp_server.http_app(path="/", stateless_http=True)
+
+# 2. SSE app (For legacy SSE clients)
 sse_application = mcp_server.http_app(transport="sse")
 
-# Initialize FastAPI Application with FastMCP lifespan
+@asynccontextmanager
+async def app_lifespan(fastapi_app: FastAPI):
+    async with AsyncExitStack() as stack:
+        await stack.enter_async_context(streamable_http_app.lifespan(fastapi_app))
+        await stack.enter_async_context(sse_application.lifespan(fastapi_app))
+        yield
+
+# Initialize FastAPI Application with combined FastMCP lifespan
 app = FastAPI(
     title="Antigravity IDE MCP Gateway",
     description="Multi-Tenant MCP & REST Bridge connecting Web LLMs to Local VS Code / Antigravity instances.",
     version="0.1.0",
-    lifespan=sse_application.lifespan
+    lifespan=app_lifespan
 )
 
 # Enable CORS for browser-based AI clients
@@ -43,9 +56,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount FastMCP SSE transport at /mcp
-# Endpoints provided: /mcp/sse and /mcp/messages
-app.mount("/mcp", sse_application)
+# Probe middleware: responds with 200 OK JSON to GET/HEAD probes on /mcp (Gemini Connected Apps validation)
+@app.middleware("http")
+async def mcp_probe_middleware(request: Request, call_next):
+    if request.url.path in ("/mcp", "/mcp/") and request.method in ("GET", "HEAD"):
+        return JSONResponse({
+            "status": "ok",
+            "protocol": "model-context-protocol",
+            "transport": "streamable-http",
+            "server": "Antigravity IDE MCP Gateway"
+        })
+    return await call_next(request)
+
+# Mount StreamableHTTP at /mcp (Gemini Web Connected Apps connects directly to /mcp)
+app.mount("/mcp", streamable_http_app)
+
+# Mount SSE transport at /sse
+app.mount("/sse", sse_application)
 
 
 class PollRequest(BaseModel):
@@ -87,21 +114,11 @@ async def get_bridge_script():
 
 
 
-@app.api_route("/mcp", methods=["GET", "POST"], include_in_schema=False)
-async def mcp_redirect(request: Request):
-    """Redirect /mcp to /mcp/sse, preserving query parameters and method."""
+@app.api_route("/mcp/sse", methods=["GET", "POST"], include_in_schema=False)
+async def mcp_sse_redirect(request: Request):
+    """Redirect legacy /mcp/sse to /sse/sse, preserving query parameters."""
     query = str(request.url.query)
-    target = "/mcp/sse"
-    if query:
-        target += f"?{query}"
-    return RedirectResponse(url=target, status_code=307)
-
-
-@app.api_route("/sse", methods=["GET", "POST"], include_in_schema=False)
-async def sse_redirect(request: Request):
-    """Redirect /sse to /mcp/sse, preserving query parameters and method."""
-    query = str(request.url.query)
-    target = "/mcp/sse"
+    target = "/sse/sse"
     if query:
         target += f"?{query}"
     return RedirectResponse(url=target, status_code=307)
