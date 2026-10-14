@@ -66,8 +66,26 @@ async def mcp_probe_middleware(request: Request, call_next):
     if request.url.path in ("/sse", "/sse/"):
         request.scope["path"] = "/sse/sse"
         return await call_next(request)
-    if request.url.path.startswith("/mcp/messages"):
-        request.scope["path"] = request.url.path.replace("/mcp/messages", "/sse/messages")
+    # Route message endpoints with serverless fallback
+    if request.method == "POST" and (
+        request.url.path.startswith("/sse/messages") or request.url.path.startswith("/mcp/messages")
+    ):
+        try:
+            transport = sse_application.routes[1].app.__self__
+            session_id_param = request.query_params.get("session_id")
+            from uuid import UUID
+            sess_uuid = UUID(hex=session_id_param) if session_id_param else None
+            has_session = sess_uuid in transport._read_stream_writers if sess_uuid else False
+        except Exception:
+            has_session = False
+
+        if not has_session:
+            # Serverless multi-instance fallback: route directly to StreamableHTTP (/mcp/)
+            request.scope["path"] = "/mcp/"
+            return await call_next(request)
+
+        if request.url.path.startswith("/mcp/messages"):
+            request.scope["path"] = request.url.path.replace("/mcp/messages", "/sse/messages")
         return await call_next(request)
 
     # Route StreamableHTTP endpoints seamlessly on /mcp
