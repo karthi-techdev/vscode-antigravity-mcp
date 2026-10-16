@@ -92,22 +92,15 @@ async def get_current_user(
             return user_id
 
     # 4. Fallback for Gemini Custom Gems / Extensions configured without custom headers:
-    # Automatically route to the currently active local IDE bridge session!
-    import time
-    from server.relay import relay_manager
-    now = time.time()
-    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 180.0]
-    if active_users:
-        return max(active_users, key=lambda u: relay_manager.client_heartbeats.get(u, 0))
-
-    if relay_manager.client_heartbeats:
-        return max(relay_manager.client_heartbeats.items(), key=lambda x: x[1])[0]
-
-    if DYNAMIC_TOKENS:
-        return list(DYNAMIC_TOKENS.values())[-1]
-
-    if STATIC_TOKENS:
-        return list(STATIC_TOKENS.values())[0]
+    # Automatically route to the currently active local IDE bridge session for action/tool endpoints!
+    path = request.url.path
+    if path.startswith("/api/action/") or path.startswith("/api/tools/") or path.startswith("/mcp"):
+        import time
+        from server.relay import relay_manager
+        now = time.time()
+        active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 180.0]
+        if active_users:
+            return max(active_users, key=lambda u: relay_manager.client_heartbeats.get(u, 0))
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

@@ -251,31 +251,42 @@ async def generate_token(
 
 
 class ProjectNamePayload(BaseModel):
-    project_name: str = ""
+    project_name: Optional[str] = None
+    project: Optional[str] = None
+
+    def get_name(self) -> str:
+        return self.project_name or self.project or ""
 
 class ReadFilePayload(BaseModel):
-    path: str
+    path: Optional[str] = None
+    file_path: Optional[str] = None
     max_lines: Optional[int] = 500
     start_line: Optional[int] = 1
     project: Optional[str] = None
 
 class WriteFilePayload(BaseModel):
-    path: str
-    content: str
+    path: Optional[str] = None
+    file_path: Optional[str] = None
+    content: Optional[str] = ""
     project: Optional[str] = None
 
 class EditFilePayload(BaseModel):
-    path: str
-    old_str: str
-    new_str: str
+    path: Optional[str] = None
+    file_path: Optional[str] = None
+    old_str: Optional[str] = None
+    old_text: Optional[str] = None
+    new_str: Optional[str] = None
+    new_text: Optional[str] = None
     project: Optional[str] = None
 
 class CreateDirPayload(BaseModel):
-    path: str
+    path: Optional[str] = None
+    dir_path: Optional[str] = None
     project: Optional[str] = None
 
 class DeleteFilePayload(BaseModel):
-    path: str
+    path: Optional[str] = None
+    file_path: Optional[str] = None
     recursive: Optional[bool] = False
     project: Optional[str] = None
 
@@ -286,11 +297,13 @@ class MoveFilePayload(BaseModel):
     project: Optional[str] = None
 
 class FilePathPayload(BaseModel):
-    path: str
+    path: Optional[str] = None
+    file_path: Optional[str] = None
     project: Optional[str] = None
 
 class ListDirPayload(BaseModel):
     path: Optional[str] = "."
+    dir_path: Optional[str] = None
     max_depth: Optional[int] = 2
     project: Optional[str] = None
 

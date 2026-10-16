@@ -59,11 +59,9 @@ class InMemoryRelayManager:
         self.client_heartbeats[user_id] = time.time()
 
     def is_client_online(self, user_id: str, timeout_seconds: float = 120.0) -> bool:
-        # In multi-instance serverless environments like Vercel, requests hit different containers.
-        # Returning True prevents false-negative offline errors across ephemeral instances.
         last_seen = self.client_heartbeats.get(user_id)
         if not last_seen:
-            return True
+            return False
         return (time.time() - last_seen) < timeout_seconds
 
     async def dispatch_task(self, user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
