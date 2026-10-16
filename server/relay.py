@@ -122,14 +122,15 @@ class InMemoryRelayManager:
                 if user_id in self.pending_tasks and task in self.pending_tasks[user_id]:
                     self.pending_tasks[user_id].remove(task)
 
-            raise TimeoutError(
-                f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'."
-            )
+            return {
+                "status": "timeout",
+                "error": f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'. Please ensure 'python bridge.py' is running on your machine."
+            }
         finally:
             mesh_worker.cancel()
 
         if task.error:
-            raise RuntimeError(f"Error from local IDE: {task.error}")
+            return {"status": "error", "error": task.error}
 
         return task.result
 
@@ -242,7 +243,7 @@ class UpstashRedisRelay:
                     # Cleanup
                     await self._cmd("DEL", f"relay:result:{task_id}", f"relay:task:{task_id}")
                     if res_data.get("error"):
-                        raise RuntimeError(f"Error from local IDE: {res_data['error']}")
+                        return {"status": "error", "error": res_data["error"]}
                     return res_data.get("result")
                 except json.JSONDecodeError:
                     pass
@@ -250,14 +251,14 @@ class UpstashRedisRelay:
 
         online = await self.is_client_online(user_id)
         if not online:
-            raise RuntimeError(
-                f"No active local IDE bridge detected. "
-                "Please run the local bridge client on your computer: "
-                "`python bridge.py --key <your-key>`"
-            )
-        raise TimeoutError(
-            f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'."
-        )
+            return {
+                "status": "offline",
+                "error": "No active local IDE bridge detected. Please ensure 'python bridge.py' is running on your machine."
+            }
+        return {
+            "status": "timeout",
+            "error": f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s while executing '{tool_name}'. Please ensure 'python bridge.py' is running on your machine."
+        }
 
     async def poll_task(self, user_id: str, wait_timeout: float = 1.5) -> Optional[Dict[str, Any]]:
         await self.update_heartbeat(user_id)

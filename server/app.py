@@ -277,86 +277,94 @@ async def execute_tool_direct(
     Direct REST API to execute any tool on the user's local IDE.
     Useful for ChatGPT Custom GPT Actions, curl, or standard HTTP webhooks.
     """
-    try:
-        result = await relay_manager.dispatch_task(
-            user_id=current_user,
-            tool_name=tool_name,
-            parameters=parameters
-        )
-        return {"status": "success", "tool": tool_name, "result": result}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    result = await dispatch_action_safe(user_id=current_user, tool_name=tool_name, parameters=parameters)
+    return {"status": "success", "tool": tool_name, "result": result}
 
 
 # -------------------------------------------------------------------------
 # Explicit REST Action Endpoints for ChatGPT Web Custom Actions
 # -------------------------------------------------------------------------
 
+async def dispatch_action_safe(user_id: str, tool_name: str, parameters: Dict[str, Any]) -> Any:
+    """Dispatches tool execution to the local IDE safely, returning structured JSON on errors."""
+    try:
+        return await relay_manager.dispatch_task(user_id=user_id, tool_name=tool_name, parameters=parameters)
+    except TimeoutError as te:
+        return {
+            "status": "timeout",
+            "error": f"Local IDE companion timed out after 30s. Please ensure 'python bridge.py' is running on your machine."
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
 @app.post("/api/action/list_projects", summary="List all projects on user computer")
 async def action_list_projects(current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="list_projects", parameters={})
+    return await dispatch_action_safe(user_id=current_user, tool_name="list_projects", parameters={})
 
 @app.post("/api/action/set_active_project", summary="Switch active project context")
 async def action_set_active_project(payload: ProjectNamePayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="set_active_project", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="set_active_project", parameters=payload.model_dump())
 
 @app.post("/api/action/get_active_project", summary="Get active project status and path")
 async def action_get_active_project(current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="get_active_project", parameters={})
+    return await dispatch_action_safe(user_id=current_user, tool_name="get_active_project", parameters={})
 
 @app.post("/api/action/get_workspace_context", summary="Get workspace overview and git status")
 async def action_get_workspace_context(current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="get_workspace_context", parameters={})
+    return await dispatch_action_safe(user_id=current_user, tool_name="get_workspace_context", parameters={})
 
 @app.post("/api/action/read_workspace_file", summary="Read lines from a workspace file")
 async def action_read_file(payload: ReadFilePayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="read_workspace_file", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="read_workspace_file", parameters=payload.model_dump())
 
 @app.post("/api/action/write_workspace_file", summary="Create or overwrite a file")
 async def action_write_file(payload: WriteFilePayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="write_workspace_file", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="write_workspace_file", parameters=payload.model_dump())
 
 @app.post("/api/action/edit_workspace_file", summary="Replace text in a workspace file")
 async def action_edit_file(payload: EditFilePayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="edit_workspace_file", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="edit_workspace_file", parameters=payload.model_dump())
 
 @app.post("/api/action/create_directory", summary="Create a new directory or folder")
 async def action_create_dir(payload: CreateDirPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="create_directory", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="create_directory", parameters=payload.model_dump())
 
 @app.post("/api/action/delete_file", summary="Delete a file or directory")
 async def action_delete_file(payload: DeleteFilePayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="delete_file", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="delete_file", parameters=payload.model_dump())
 
 @app.post("/api/action/move_or_rename_file", summary="Move or rename a file or directory")
 async def action_move_file(payload: MoveFilePayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="move_or_rename_file", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="move_or_rename_file", parameters=payload.model_dump())
 
 @app.post("/api/action/get_file_info", summary="Get metadata, size, timestamps, and line count")
 async def action_get_file_info(payload: FilePathPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="get_file_info", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="get_file_info", parameters=payload.model_dump())
 
 @app.post("/api/action/list_workspace_directory", summary="List files and folders in directory")
 async def action_list_dir(payload: ListDirPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="list_workspace_directory", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="list_workspace_directory", parameters=payload.model_dump())
 
 @app.post("/api/action/search_workspace_files", summary="Search text across files")
 async def action_search_files(payload: SearchFilesPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="search_workspace_files", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="search_workspace_files", parameters=payload.model_dump())
 
 @app.post("/api/action/run_powershell_command", summary="Execute PowerShell command or script")
 async def action_run_powershell(payload: CommandPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_powershell_command", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="run_powershell_command", parameters=payload.model_dump())
 
 @app.post("/api/action/run_cmd_command", summary="Execute Command Prompt cmd.exe command")
 async def action_run_cmd(payload: CommandPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_cmd_command", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="run_cmd_command", parameters=payload.model_dump())
 
 @app.post("/api/action/run_git_command", summary="Execute Git command")
 async def action_run_git(payload: GitPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_git_command", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="run_git_command", parameters=payload.model_dump())
 
 @app.post("/api/action/run_terminal_command", summary="Execute general terminal command")
 async def action_run_terminal(payload: CommandPayload, current_user: str = Depends(get_current_user)):
-    return await relay_manager.dispatch_task(user_id=current_user, tool_name="run_terminal_command", parameters=payload.model_dump())
+    return await dispatch_action_safe(user_id=current_user, tool_name="run_terminal_command", parameters=payload.model_dump())
 

@@ -103,7 +103,8 @@ class LocalIDEExecutor:
 
     def set_active_project(self, project_name: str) -> Dict[str, Any]:
         """Switch the current working project context."""
-        if not project_name or project_name in (".", "/"):
+        clean_name = str(project_name or "").strip().strip("/\\")
+        if not clean_name or clean_name in (".", "/"):
             self.active_project = None
             return {
                 "status": "success",
@@ -112,9 +113,29 @@ class LocalIDEExecutor:
                 "current_path": str(self.projects_root)
             }
 
-        target = (self.projects_root / project_name).resolve()
+        target = (self.projects_root / clean_name).resolve()
+        if not target.exists():
+            try:
+                target.mkdir(parents=True, exist_ok=True)
+                self.active_project = str(target.relative_to(self.projects_root))
+                return {
+                    "status": "success",
+                    "active_project": self.active_project,
+                    "current_path": str(target),
+                    "created": True,
+                    "message": f"Created project directory '{clean_name}' and switched active project to '{self.active_project}'"
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "error": f"Failed to create project directory '{clean_name}': {e}"
+                }
+
         if not target.is_dir():
-            raise NotADirectoryError(f"Project '{project_name}' not found under '{self.projects_root}'")
+            return {
+                "status": "error",
+                "error": f"Path '{target}' is a file, not a directory."
+            }
 
         self.active_project = str(target.relative_to(self.projects_root))
         return {
@@ -165,13 +186,17 @@ class LocalIDEExecutor:
     def _resolve_safe_path(self, relative_or_abs_path: str, project: Optional[str] = None) -> Path:
         """Resolve a file path, ensuring it stays within the designated project or projects_root."""
         if project:
-            base_dir = (self.projects_root / project).resolve()
+            clean_proj = str(project).strip().strip("/\\")
+            base_dir = (self.projects_root / clean_proj).resolve()
+            if not base_dir.exists():
+                base_dir.mkdir(parents=True, exist_ok=True)
             if not base_dir.is_dir():
-                raise NotADirectoryError(f"Project '{project}' does not exist.")
+                raise NotADirectoryError(f"Project '{project}' is not a directory.")
         else:
             base_dir = self.current_workspace_path
 
-        target = (base_dir / relative_or_abs_path).resolve()
+        clean_path = str(relative_or_abs_path or "").strip().lstrip("/\\")
+        target = (base_dir / clean_path).resolve()
         try:
             target.relative_to(self.projects_root)
         except ValueError:
