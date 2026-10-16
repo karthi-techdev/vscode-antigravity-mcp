@@ -34,7 +34,7 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
                 if user_id:
                     return user_id
 
-            # Check custom headers for Gemini / Claude
+            # Check custom headers for Claude or external clients
             for h in ("x-api-key", "api-key", "x-auth-token"):
                 v = req.headers.get(h)
                 if v and v.strip():
@@ -51,8 +51,7 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
     except Exception:
         pass
 
-    # 3. Fallback: If token was not attached to URL/header (e.g. Gemini Connected Apps added without ?token=),
-    # automatically route to the user's active local bridge!
+    # 3. Fallback: If token was not attached to URL/header, automatically route to the user's active local bridge!
     import time
     now = time.time()
     active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 120.0]

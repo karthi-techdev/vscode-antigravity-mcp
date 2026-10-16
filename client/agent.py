@@ -319,7 +319,7 @@ class LocalBridgeAgent:
         print(f"🌐 Cloud Relay:    {self.server_url}")
         print(f"🔑 Auth Token:     {self.auth_token[:8]}...{self.auth_token[-4:] if len(self.auth_token) > 12 else ''}")
         print(f"=======================================================\n")
-        print("Connected to cloud relay. Waiting for AI commands (ChatGPT, Gemini, etc.)...\n")
+        print("Connected to cloud relay. Waiting for AI commands (ChatGPT, Claude, etc.)...\n")
 
         poll_url = f"{self.server_url}/api/relay/poll"
 

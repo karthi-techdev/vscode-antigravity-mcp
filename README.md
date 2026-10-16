@@ -3,7 +3,7 @@
 # Universal Local IDE & Workspace MCP Bridge 🚀
 
 
-> Connect Web AI assistants (**ChatGPT, Claude Web, Gemini Web**) directly and securely to **ANY local IDE or developer workspace** (**VS Code, Cursor, Windsurf, JetBrains / IntelliJ / PyCharm, Antigravity, Zed, Neovim, Terminal**) — with multi-user isolation, zero open ports, and live interactive terminal logs.
+> Connect Web AI assistants (**ChatGPT, Claude Web**) and MCP clients directly and securely to **ANY local IDE or developer workspace** (**VS Code, Cursor, Windsurf, JetBrains / IntelliJ / PyCharm, Antigravity, Zed, Neovim, Terminal**) — with multi-user isolation, zero open ports, and live interactive terminal logs.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
@@ -15,14 +15,14 @@
 
 ## 💡 How It Works
 
-Cloud AI models (ChatGPT, Claude Web, Gemini Web) cannot reach into your computer because of firewalls and Wi-Fi NAT. 
+Cloud AI models (ChatGPT, Claude Web) cannot reach into your computer because of firewalls and Wi-Fi NAT. 
 
 **Universal IDE MCP Bridge** creates an on-demand, outbound connection between your local computer and your hosted MCP Gateway:
 
 ```
 ┌──────────────────────────────────────┐
 │       Web AI Assistant               │
-│   (ChatGPT / Claude / Gemini)        │
+│             (ChatGPT / Claude)       │
 └──────────────────┬───────────────────┘
                    │ 1. Tool Call + Your Private Token
                    ▼
@@ -107,7 +107,7 @@ python bridge.py
 
 #### What Happens When You Run It:
 1. **Interactive Console**: Launches an active developer session with live status streaming.
-2. **Real-Time Debug Logs**: Every time Claude, ChatGPT, or Gemini executes a tool, the parameters, execution time (in ms), and output preview are printed in real-time.
+2. **Real-Time Debug Logs**: Every time ChatGPT or Claude executes a tool, the parameters, execution time (in ms), and output preview are printed in real-time.
 3. **Stop Anytime**: Press `Ctrl+C` in your terminal to cleanly disconnect and stop the bridge.
 
 ```text
@@ -120,7 +120,7 @@ python bridge.py
 🔑 Auth Token:       YOUR_SEC..._KEY
 🟢 Status:           ACTIVE & LISTENING (Press Ctrl+C to stop)
 ────────────────────────────────────────────────────────────────────────
-💡 Ready! When Claude, ChatGPT, or Gemini Web calls a tool, logs will stream below:
+💡 Ready! When ChatGPT or Claude calls a tool, logs will stream below:
 
 [21:30:15] 💚 Gateway heartbeat confirmed (latency: 38ms) | Status: Healthy
 
@@ -146,11 +146,9 @@ Connect any Web AI Chat in your browser to your local computer:
 
 | Platform | Endpoint URL | Format / Protocol |
 |---|---|---|
-| **Claude Web** *(Custom Connectors)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** (Official Claude Connector standard) |
-| **Google Gemini Web** *(Connected Apps)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** (Official Gemini MCP format) |
 | **ChatGPT Web** *(Custom GPTs / Actions)* | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Schema Actions** (Direct REST) |
 | **ChatGPT Web** *(MCP Connectors)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** |
-| **Google AI Studio Web** | `https://vscode-antigravity-mcp.vercel.app/openapi.json` | **OpenAPI Function Calling** |
+| **Claude Web** *(Custom Connectors)* | `https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY` | **StreamableHTTP** (Official Claude Connector standard) |
 | **Authentication Header** | `Authorization: Bearer YOUR_SECRET_KEY` | Enter your secret key in the connector settings |
 | **URL Query Token Option** | `?token=YOUR_SECRET_KEY` | Append token directly in URL |
 
@@ -158,20 +156,7 @@ Connect any Web AI Chat in your browser to your local computer:
 
 ## 💻 Browser AI Setup Walkthrough
 
-### 🟣 1. Claude Web (`claude.ai` Custom Connectors)
-1. Open **[claude.ai](https://claude.ai)** in your browser.
-2. Click your user profile icon (bottom left) ➔ **Settings** ➔ **Connectors** (or **+ Add** ➔ **Custom connector**).
-3. Fill in:
-   * **Name**: `Universal IDE Bridge`
-   * **URL**:
-     ```text
-     https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY
-     ```
-4. Click **Continue**. Claude connects over official **StreamableHTTP** and discovers all 17 tools instantly!
-
----
-
-### 🟢 2. ChatGPT Web (`chatgpt.com` Custom GPT Actions)
+### 🟢 1. ChatGPT Web (`chatgpt.com` Custom GPT Actions — Recommended)
 1. In your browser, open **[chatgpt.com](https://chatgpt.com)**.
 2. Go to **Explore GPTs** ➔ **+ Create** (top right) ➔ **Configure** tab.
 3. Click **Create new action**:
@@ -186,27 +171,16 @@ Connect any Web AI Chat in your browser to your local computer:
 
 ---
 
-### 🔵 3. Google Gemini Web (`gemini.google.com`)
-
-Consumer `gemini.google.com` (personal accounts) does not have a built-in OpenAPI Actions button like ChatGPT. To run IDE tools directly inside `gemini.google.com`, use the included **Gemini IDE Bridge Chrome Extension** (or Tampermonkey Userscript):
-
-#### Option A: Load Chrome Extension (Takes 20 Seconds — Recommended)
-1. In Google Chrome, open `chrome://extensions` in your address bar.
-2. Toggle on **Developer mode** (in the top right corner).
-3. Click **Load unpacked** (top left) and select the `gemini-extension` directory:
-   ```text
-   C:\projects\vscode-antigravity-mcp\gemini-extension
-   ```
-4. Navigate to **[gemini.google.com](https://gemini.google.com)**.
-5. You will see the floating badge: **`🟢 IDE: Connected (your-project)`** in the bottom-right corner!
-6. Chat normally or create an **IDE Coding Gem** at `gemini.google.com/gems`! Whenever Gemini wants to read/edit code or run commands, the extension automatically executes it on your machine and delivers the result.
-
-#### Option B: Tampermonkey Userscript (1-Click)
-If you already use Tampermonkey or Violentmonkey in Chrome:
-1. Open your Tampermonkey dashboard ➔ **Create a new script**.
-2. Copy the contents of [`gemini-bridge.user.js`](file:///c:/projects/vscode-antigravity-mcp/gemini-bridge.user.js) and paste it into the editor.
-3. Save the script (Ctrl+S).
-4. Refresh `gemini.google.com`. The IDE Bridge is now live!
+### 🟣 2. Claude Web (`claude.ai` Custom Connectors)
+1. Open **[claude.ai](https://claude.ai)** in your browser.
+2. Click your user profile icon (bottom left) ➔ **Settings** ➔ **Connectors** (or **+ Add** ➔ **Custom connector**).
+3. Fill in:
+   * **Name**: `Universal IDE Bridge`
+   * **URL**:
+     ```text
+     https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY
+     ```
+4. Click **Continue**. Claude connects over official **StreamableHTTP** and discovers all 17 tools instantly!
 
 ---
 

@@ -44,7 +44,7 @@ async def test_full_relay_and_auth_flow():
             online_res = await client.get("/api/status", headers=headers)
             assert online_res.json()["local_bridge_connected"] is True
 
-            # 4. Dispatch a tool call asynchronously (e.g. from ChatGPT / Gemini)
+            # 4. Dispatch a tool call asynchronously (e.g. from ChatGPT / Claude)
             async def run_tool_call():
                 return await client.post(
                     "/api/tools/read_workspace_file",

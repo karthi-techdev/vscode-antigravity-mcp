@@ -66,7 +66,7 @@ async def get_token_from_request(
     elif auth.strip():
         return auth.strip()
 
-    # 2. Custom headers for Gemini, Claude, or custom webhooks
+    # 2. Custom headers for Claude, webhooks, or custom clients
     for h in ("x-api-key", "api-key", "x-auth-token"):
         v = request.headers.get(h)
         if v and v.strip():
@@ -91,7 +91,7 @@ async def get_current_user(
         if user_id:
             return user_id
 
-    # 4. Fallback for Gemini Custom Gems / Extensions configured without custom headers:
+    # 4. Fallback for Web Actions without custom headers:
     # Automatically route to the currently active local IDE bridge session for action/tool endpoints!
     path = request.url.path
     if path.startswith("/api/action/") or path.startswith("/api/tools/") or path.startswith("/mcp"):

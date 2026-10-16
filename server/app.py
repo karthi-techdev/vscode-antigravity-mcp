@@ -26,7 +26,7 @@ mcp_server = FastMCP(
 )
 register_tools(mcp_server)
 
-# Initialize StreamableHTTP MCP app (Official high-performance standard for Claude, Gemini, ChatGPT)
+# Initialize StreamableHTTP MCP app (Official high-performance standard for Claude & ChatGPT)
 streamable_http_app = mcp_server.http_app(path="/", stateless_http=True)
 
 @asynccontextmanager
@@ -34,7 +34,7 @@ async def app_lifespan(fastapi_app: FastAPI):
     async with streamable_http_app.lifespan(fastapi_app):
         yield
 
-# Initialize FastAPI Application with explicit servers for Gemini & ChatGPT
+# Initialize FastAPI Application with explicit servers for ChatGPT Actions
 app = FastAPI(
     title="Universal IDE MCP Gateway",
     description="Multi-Tenant MCP & REST Bridge connecting Web LLMs to any local IDE or developer workspace (VS Code, Cursor, Windsurf, JetBrains, etc.).",
@@ -48,7 +48,7 @@ app = FastAPI(
     ]
 )
 
-# Enable CORS for browser-based AI clients (Gemini Web, ChatGPT Web, Claude Web)
+# Enable CORS for browser-based AI clients (ChatGPT Web, Claude Web)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -57,7 +57,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Probe, CORS, and Accept-normalization middleware for Gemini and ChatGPT
+# Probe, CORS, and Accept-normalization middleware
 @app.middleware("http")
 async def mcp_probe_middleware(request: Request, call_next):
     # Handle CORS preflight OPTIONS across all routes
@@ -72,7 +72,7 @@ async def mcp_probe_middleware(request: Request, call_next):
             }
         )
 
-    # Normalize Accept header for /mcp and /sse to prevent FastMCP 406 Not Acceptable (crucial for Gemini)
+    # Normalize Accept header for /mcp and /sse to prevent FastMCP 406 Not Acceptable errors
     if request.url.path.startswith("/mcp") or request.url.path.startswith("/sse"):
         headers = []
         has_accept = False

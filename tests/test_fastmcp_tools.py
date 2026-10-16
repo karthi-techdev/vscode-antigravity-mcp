@@ -95,7 +95,7 @@ async def test_fastmcp_new_file_tools():
 
 
 @pytest.mark.asyncio
-async def test_streamable_http_gemini_handshake():
+async def test_streamable_http_mcp_handshake():
     from server.app import app
     from starlette.testclient import TestClient
 
@@ -113,7 +113,7 @@ async def test_streamable_http_gemini_handshake():
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "gemini-web", "version": "1.0"}
+                "clientInfo": {"name": "mcp-client", "version": "1.0"}
             }
         })
         assert r_init.status_code == 200
@@ -132,7 +132,7 @@ async def test_streamable_http_gemini_handshake():
         # 4. Fallback test: verify get_user_id_for_tool routes to active bridge without token
         from server.tools import get_user_id_for_tool
         from server.relay import relay_manager
-        relay_manager.update_heartbeat("test_gemini_active_user")
-        assert get_user_id_for_tool(None) == "test_gemini_active_user"
+        relay_manager.update_heartbeat("test_companion_active_user")
+        assert get_user_id_for_tool(None) == "test_companion_active_user"
 
 

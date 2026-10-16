@@ -1,7 +1,7 @@
 """
 Universal IDE & Developer Workspace - Standalone Global Multi-Project Bridge
 Connects any project or IDE (VS Code, Cursor, Windsurf, JetBrains, Antigravity, Terminal)
-to Gemini Web, ChatGPT, Claude via hosted MCP Gateway (Vercel).
+to ChatGPT, Claude Web, and MCP Clients via hosted MCP Gateway (Vercel).
 Supports system-wide multi-project switching and background startup.
 No git cloning required.
 """
@@ -914,7 +914,7 @@ class LocalBridgeAgent:
         print(f"🔑 Auth Token:       {self.auth_token[:8]}...{self.auth_token[-4:] if len(self.auth_token) > 12 else ''}", flush=True)
         print(f"🟢 Status:           ACTIVE & LISTENING (Press Ctrl+C to stop)", flush=True)
         print("────────────────────────────────────────────────────────────────────────", flush=True)
-        print("💡 Ready! When Claude, ChatGPT, or Gemini Web calls a tool, logs will stream below:\n", flush=True)
+        print("💡 Ready! When ChatGPT or Claude calls a tool, logs will stream below:\n", flush=True)
 
         poll_url = f"{self.server_url}/api/relay/poll"
 
