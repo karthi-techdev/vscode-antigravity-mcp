@@ -187,13 +187,26 @@ Connect any Web AI Chat in your browser to your local computer:
 ---
 
 ### 🔵 3. Google Gemini Web (`gemini.google.com`)
-1. Open **[gemini.google.com](https://gemini.google.com)**.
-2. Go to **Settings** ➔ **Connected apps** ➔ **Connect to an MCP server**.
-3. In **MCP server URL**, enter:
+
+Consumer `gemini.google.com` (personal accounts) does not have a built-in OpenAPI Actions button like ChatGPT. To run IDE tools directly inside `gemini.google.com`, use the included **Gemini IDE Bridge Chrome Extension** (or Tampermonkey Userscript):
+
+#### Option A: Load Chrome Extension (Takes 20 Seconds — Recommended)
+1. In Google Chrome, open `chrome://extensions` in your address bar.
+2. Toggle on **Developer mode** (in the top right corner).
+3. Click **Load unpacked** (top left) and select the `gemini-extension` directory:
    ```text
-   https://vscode-antigravity-mcp.vercel.app/mcp?token=YOUR_SECRET_KEY
+   C:\projects\vscode-antigravity-mcp\gemini-extension
    ```
-4. Click **Connect**. All workspace tools are now active.
+4. Navigate to **[gemini.google.com](https://gemini.google.com)**.
+5. You will see the floating badge: **`🟢 IDE: Connected (your-project)`** in the bottom-right corner!
+6. Chat normally or create an **IDE Coding Gem** at `gemini.google.com/gems`! Whenever Gemini wants to read/edit code or run commands, the extension automatically executes it on your machine and delivers the result.
+
+#### Option B: Tampermonkey Userscript (1-Click)
+If you already use Tampermonkey or Violentmonkey in Chrome:
+1. Open your Tampermonkey dashboard ➔ **Create a new script**.
+2. Copy the contents of [`gemini-bridge.user.js`](file:///c:/projects/vscode-antigravity-mcp/gemini-bridge.user.js) and paste it into the editor.
+3. Save the script (Ctrl+S).
+4. Refresh `gemini.google.com`. The IDE Bridge is now live!
 
 ---
 
