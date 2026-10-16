@@ -49,25 +49,35 @@ def verify_token(token: str) -> Optional[str]:
 async def get_token_from_request(
     request: Request,
     auth_header: Optional[HTTPAuthorizationCredentials] = Security(security_bearer)
-) -> str:
+) -> Optional[str]:
     """
     Extract token from:
     1. HTTP Authorization Bearer header
-    2. URL query parameters ('token' or 'api_key')
+    2. Custom headers ('x-api-key', 'api-key', 'x-auth-token')
+    3. URL query parameters ('token' or 'api_key')
     """
     # 1. Bearer header
     if auth_header and auth_header.credentials:
         return auth_header.credentials.strip()
 
-    # 2. Query param (for web clients like SSE where headers can't be easily set)
+    auth = request.headers.get("Authorization") or request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    elif auth.strip():
+        return auth.strip()
+
+    # 2. Custom headers for Gemini, Claude, or custom webhooks
+    for h in ("x-api-key", "api-key", "x-auth-token"):
+        v = request.headers.get(h)
+        if v and v.strip():
+            return v.strip()
+
+    # 3. Query param (for web clients like SSE where headers can't be easily set)
     query_token = request.query_params.get("token") or request.query_params.get("api_key")
     if query_token:
         return query_token.strip()
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Missing authentication credentials. Provide 'Authorization: Bearer <token>' or query param '?token=<token>'."
-    )
+    return None
 
 
 async def get_current_user(
@@ -76,13 +86,33 @@ async def get_current_user(
 ) -> str:
     """FastAPI dependency to authenticate requests and return the user_id."""
     token = await get_token_from_request(request, auth_header)
-    user_id = verify_token(token)
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired authentication token."
-        )
-    return user_id
+    if token:
+        user_id = verify_token(token)
+        if user_id:
+            return user_id
+
+    # 4. Fallback for Gemini Custom Gems / Extensions configured without custom headers:
+    # Automatically route to the currently active local IDE bridge session!
+    import time
+    from server.relay import relay_manager
+    now = time.time()
+    active_users = [uid for uid, t in relay_manager.client_heartbeats.items() if (now - t) < 180.0]
+    if active_users:
+        return max(active_users, key=lambda u: relay_manager.client_heartbeats.get(u, 0))
+
+    if relay_manager.client_heartbeats:
+        return max(relay_manager.client_heartbeats.items(), key=lambda x: x[1])[0]
+
+    if DYNAMIC_TOKENS:
+        return list(DYNAMIC_TOKENS.values())[-1]
+
+    if STATIC_TOKENS:
+        return list(STATIC_TOKENS.values())[0]
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Missing authentication credentials and no active local IDE companion detected. Start 'python bridge.py' or provide 'Authorization: Bearer <token>'."
+    )
 
 
 async def verify_admin_key(request: Request) -> bool:

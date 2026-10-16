@@ -22,13 +22,25 @@ def get_user_id_for_tool(token_param: Optional[str] = None) -> str:
         from fastmcp.server.dependencies import get_http_request
         req = get_http_request()
         if req is not None:
-            # Check Bearer header
-            auth = req.headers.get("Authorization", "")
-            if auth.startswith("Bearer "):
+            # Check Bearer header (case-insensitive)
+            auth = req.headers.get("Authorization") or req.headers.get("authorization", "")
+            if auth.lower().startswith("bearer "):
                 tok = auth[7:].strip()
                 user_id = verify_token(tok)
                 if user_id:
                     return user_id
+            elif auth.strip():
+                user_id = verify_token(auth.strip())
+                if user_id:
+                    return user_id
+
+            # Check custom headers for Gemini / Claude
+            for h in ("x-api-key", "api-key", "x-auth-token"):
+                v = req.headers.get(h)
+                if v and v.strip():
+                    user_id = verify_token(v.strip())
+                    if user_id:
+                        return user_id
 
             # Check query parameters
             query_token = req.query_params.get("token") or req.query_params.get("api_key")
