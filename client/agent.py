@@ -3,7 +3,9 @@ import asyncio
 import hashlib
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -362,7 +364,6 @@ def configure_defender_exclusions(projects_root: Optional[str] = None):
         print("ℹ️ Windows Defender exclusions are only applicable on Windows.")
         return
 
-    import tempfile
     python_exe = sys.executable
     python_dir = str(Path(python_exe).parent.resolve())
     root_path = str(Path(projects_root or ".").resolve())
