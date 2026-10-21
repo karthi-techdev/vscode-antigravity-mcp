@@ -554,10 +554,26 @@ class LocalIDEExecutor:
             )
             try:
                 stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                err_out = stderr or ""
+                # Check for Windows Defender / Security blocking indicators
+                if sys.platform == "win32" and proc.returncode != 0:
+                    lower_err = err_out.lower()
+                    defender_blocked = False
+                    if any(term in lower_err for term in ("virus", "potentially unwanted software", "operation did not complete", "scriptcontainedmaliciouscontent", "blocked by group policy")):
+                        defender_blocked = True
+                    elif proc.returncode in (-1073741819, 3221225477, 225, -1073741510, 3221225786) and not err_out.strip():
+                        defender_blocked = True
+                    
+                    if defender_blocked:
+                        err_out += (
+                            "\n[⚠️ Windows Security Alert]: Command execution was blocked or intercepted by Windows Security/Defender.\n"
+                            "To whitelist your workspace, run: 'python bridge.py --allow-defender' or run allow_defender.bat as Administrator."
+                        )
+
                 return {
                     "exit_code": proc.returncode,
                     "stdout": stdout or "",
-                    "stderr": stderr or ""
+                    "stderr": err_out
                 }
             except subprocess.TimeoutExpired:
                 if sys.platform == "win32":
@@ -582,10 +598,13 @@ class LocalIDEExecutor:
                     "stderr": f"Command timed out after {timeout_seconds}s and was terminated."
                 }
         except Exception as e:
+            err_msg = f"Execution failed: {str(e)}"
+            if sys.platform == "win32" and any(k in err_msg.lower() for k in ("virus", "operation did not complete", "access is denied", "blocked")):
+                err_msg += "\n[⚠️ Windows Security Alert]: Command was blocked by Windows Defender. Run 'python bridge.py --allow-defender' as Administrator to whitelist your workspace."
             return {
                 "exit_code": -1,
                 "stdout": "",
-                "stderr": f"Execution failed: {str(e)}"
+                "stderr": err_msg
             }
 
     def execute_command(self, command: str, timeout_seconds: int = 30, project: Optional[str] = None) -> Dict[str, Any]:
@@ -602,11 +621,12 @@ class LocalIDEExecutor:
         if self._is_dev_server_command(command):
             return self._launch_background_server(command, cwd, shell_type="powershell", project=project)
         ps_bin = "powershell.exe" if sys.platform == "win32" else "pwsh"
+        # Use RemoteSigned instead of Bypass to prevent triggering Windows Defender / AMSI heuristic alarms
         ps_cmd = [
             ps_bin,
             "-NoProfile",
             "-NonInteractive",
-            "-ExecutionPolicy", "Bypass",
+            "-ExecutionPolicy", "RemoteSigned",
             "-Command", command
         ]
         res = self._run_process_safe(ps_cmd, cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
@@ -617,8 +637,10 @@ class LocalIDEExecutor:
         cwd = self._resolve_safe_path(".", project=project)
         if self._is_dev_server_command(command):
             return self._launch_background_server(command, cwd, shell_type="cmd", project=project)
-        cmd_args = ["cmd.exe", "/c", command] if sys.platform == "win32" else ["sh", "-c", command]
-        res = self._run_process_safe(cmd_args, cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
+        if sys.platform == "win32":
+            res = self._run_process_safe(command, cwd=cwd, timeout_seconds=timeout_seconds, shell=True)
+        else:
+            res = self._run_process_safe(["sh", "-c", command], cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
         return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
     def run_git(self, subcommand: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:

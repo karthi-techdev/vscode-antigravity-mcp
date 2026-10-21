@@ -81,6 +81,13 @@ python bridge.py --save --root "C:\projects" --key "YOUR_SECRET_KEY"
 * **`--key`**: Your private auth token (e.g. `D4_PROJECT_MCP_SERVER` or any custom secret key).
 * **`--save`**: Saves this configuration globally to `~/.universal_ide_bridge.json`.
 
+> 🛡️ **Windows Users (Optional One-Time Step)**:
+> To prevent Windows Defender from holding or timing out tool commands (e.g. `npm install`, git, tests), run once:
+> ```powershell
+> python bridge.py --allow-defender
+> ```
+> *(Click **Yes** on the Windows UAC prompt to permanently whitelist your projects and Python).*
+
 #### Verify Your Saved Configuration Anytime:
 ```bash
 python bridge.py --show-config
@@ -231,6 +238,33 @@ Connect any Web AI Chat in your browser to your local computer:
 | `--dir` | | Initial workspace directory (default: current directory) |
 | `--save` | | Saves the provided `--root`, `--key`, and `--server` as global defaults in `~/.universal_ide_bridge.json` |
 | `--show-config` | | Displays current saved global defaults |
+| `--allow-defender` | | Automatically configures Windows Defender exclusions for Python and your code projects (requires UAC prompt) |
+
+---
+
+## 🛡️ Windows Security & Defender Optimization (Fixing Timeouts)
+
+If Windows Defender or AMSI blocks commands or causes connection timeouts while running tools (e.g. `npm install`, git, build scripts):
+
+### Option 1: 1-Click Setup via Bridge CLI (Recommended)
+```bash
+python bridge.py --allow-defender
+```
+*Click **Yes** in the Windows UAC confirmation dialog to apply exclusions instantly.*
+
+### Option 2: Download & Run `allow_defender.bat` (Zero-Clone)
+If you prefer a double-clickable batch file, download it directly:
+```powershell
+curl.exe -o allow_defender.bat https://vscode-antigravity-mcp.vercel.app/allow_defender.bat
+```
+Then double-click `allow_defender.bat` and click **Yes** in the UAC prompt.
+
+### Option 3: Manual Administrator PowerShell
+Open **PowerShell as Administrator** and run:
+```powershell
+Add-MpPreference -ExclusionPath "C:\projects"
+Add-MpPreference -ExclusionProcess "python.exe"
+```
 
 ---
 
@@ -244,6 +278,7 @@ Connect any Web AI Chat in your browser to your local computer:
 |---|---|---|
 | `AUTH_TOKENS` | Comma-separated list of `token:user_id` pairs | `D4_PROJECT_MCP_SERVER:karthi` |
 | `ADMIN_SECRET_KEY` | Secret password for admin API endpoints | `your_admin_secret_key` |
+| `RELAY_TASK_TIMEOUT` | Max seconds tool execution can take before timeout (default: `90`) | `90` |
 | `UPSTASH_REDIS_REST_URL` *(Optional)* | Upstash Redis REST URL for multi-container serverless persistence | `https://your-redis.upstash.io` |
 | `UPSTASH_REDIS_REST_TOKEN` *(Optional)* | Upstash Redis REST Token | `your_upstash_token` |
 
@@ -256,6 +291,7 @@ Connect any Web AI Chat in your browser to your local computer:
 * **Boundary Protection**: The executor enforces strict root directory boundaries. Any attempt by the AI to access files outside your designated root (`../../etc/passwd` or `C:\Windows`) raises an immediate `PermissionError`.
 * **Zero Inbound Ports**: Your computer never opens an incoming network port. All communication uses outbound HTTPS polling.
 * **Process Isolation**: Terminal commands run inside isolated process groups with Windows `taskkill /F /T` tree-kill timeouts to prevent hanging child processes.
+* **Safe Script Policies**: PowerShell commands run with `-ExecutionPolicy RemoteSigned` to eliminate heuristic alarms from Defender AMSI.
 
 ---
 

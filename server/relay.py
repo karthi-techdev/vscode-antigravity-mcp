@@ -226,8 +226,9 @@ class UpstashRedisRelay:
             "created_at": time.time()
         }
 
-        # Store task data with 120s TTL
-        await self._cmd("SET", f"relay:task:{task_id}", json.dumps(task_payload), "EX", "120")
+        # Store task data with dynamic TTL matching timeout
+        task_ttl = str(max(180, RELAY_TASK_TIMEOUT * 2))
+        await self._cmd("SET", f"relay:task:{task_id}", json.dumps(task_payload), "EX", task_ttl)
         # Enqueue task for user's local bridge
         await self._cmd("RPUSH", f"relay:pending:{user_id}", task_id)
 
@@ -280,7 +281,8 @@ class UpstashRedisRelay:
             "error": error,
             "completed_at": time.time()
         }
-        res = await self._cmd("SET", f"relay:result:{task_id}", json.dumps(res_data), "EX", "120")
+        task_ttl = str(max(180, RELAY_TASK_TIMEOUT * 2))
+        res = await self._cmd("SET", f"relay:result:{task_id}", json.dumps(res_data), "EX", task_ttl)
         return res == "OK"
 
 

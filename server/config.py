@@ -29,7 +29,8 @@ def parse_auth_tokens(raw: str) -> Dict[str, str]:
 STATIC_TOKENS = parse_auth_tokens(AUTH_TOKENS_RAW)
 
 # Relay timeout in seconds (how long MCP tool call waits for local IDE client response)
-RELAY_TASK_TIMEOUT = int(os.getenv("RELAY_TASK_TIMEOUT", "30"))
+# Generous 90s default to prevent false timeouts from Windows Security scans, npm/pip builds, or git clones
+RELAY_TASK_TIMEOUT = int(os.getenv("RELAY_TASK_TIMEOUT", "90"))
 
 # Upstash Redis / Vercel KV settings (for multi-instance serverless Vercel persistence)
 UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL") or os.getenv("KV_REST_API_URL", "")

@@ -33,3 +33,13 @@ def test_git_execution():
         status_res = executor.run_git("status")
         assert status_res["exit_code"] == 0
         assert ("On branch" in status_res["stdout"] or "No commits yet" in status_res["stdout"])
+
+
+def test_defender_alert_handling():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        executor = LocalIDEExecutor(workspace_dir=temp_dir)
+        # Run a simulated command that exits with error containing 'virus or potentially unwanted software'
+        res = executor.run_powershell("[Console]::Error.WriteLine('Operation did not complete successfully because the file contains a virus or potentially unwanted software.'); exit 1")
+        assert res["exit_code"] != 0
+        assert "Windows Security Alert" in res["stderr"]
+        assert "python bridge.py --allow-defender" in res["stderr"]

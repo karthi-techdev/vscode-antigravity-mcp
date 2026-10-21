@@ -548,10 +548,26 @@ class LocalIDEExecutor:
             )
             try:
                 stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                err_out = stderr or ""
+                # Check for Windows Defender / Security blocking indicators
+                if sys.platform == "win32" and proc.returncode != 0:
+                    lower_err = err_out.lower()
+                    defender_blocked = False
+                    if any(term in lower_err for term in ("virus", "potentially unwanted software", "operation did not complete", "scriptcontainedmaliciouscontent", "blocked by group policy")):
+                        defender_blocked = True
+                    elif proc.returncode in (-1073741819, 3221225477, 225, -1073741510, 3221225786) and not err_out.strip():
+                        defender_blocked = True
+                    
+                    if defender_blocked:
+                        err_out += (
+                            "\n[⚠️ Windows Security Alert]: Command execution was blocked or intercepted by Windows Security/Defender.\n"
+                            "To whitelist your workspace, run: 'python bridge.py --allow-defender' or run allow_defender.bat as Administrator."
+                        )
+
                 return {
                     "exit_code": proc.returncode,
                     "stdout": stdout or "",
-                    "stderr": stderr or ""
+                    "stderr": err_out
                 }
             except subprocess.TimeoutExpired:
                 if sys.platform == "win32":
@@ -576,10 +592,13 @@ class LocalIDEExecutor:
                     "stderr": f"Command timed out after {timeout_seconds}s and was terminated."
                 }
         except Exception as e:
+            err_msg = f"Execution failed: {str(e)}"
+            if sys.platform == "win32" and any(k in err_msg.lower() for k in ("virus", "operation did not complete", "access is denied", "blocked")):
+                err_msg += "\n[⚠️ Windows Security Alert]: Command was blocked by Windows Defender. Run 'python bridge.py --allow-defender' as Administrator to whitelist your workspace."
             return {
                 "exit_code": -1,
                 "stdout": "",
-                "stderr": f"Execution failed: {str(e)}"
+                "stderr": err_msg
             }
 
     def execute_command(self, command: str, timeout_seconds: int = 30, project: Optional[str] = None) -> Dict[str, Any]:
@@ -594,7 +613,8 @@ class LocalIDEExecutor:
         if self._is_dev_server_command(command):
             return self._launch_background_server(command, cwd, shell_type="powershell", project=project)
         ps_bin = "powershell.exe" if sys.platform == "win32" else "pwsh"
-        ps_cmd = [ps_bin, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command]
+        # Use RemoteSigned instead of Bypass to prevent triggering Windows Defender / AMSI heuristic alarms
+        ps_cmd = [ps_bin, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-Command", command]
         res = self._run_process_safe(ps_cmd, cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
         return {"shell": "powershell", "command": command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
@@ -602,8 +622,10 @@ class LocalIDEExecutor:
         cwd = self._resolve_safe_path(".", project=project)
         if self._is_dev_server_command(command):
             return self._launch_background_server(command, cwd, shell_type="cmd", project=project)
-        cmd_args = ["cmd.exe", "/c", command] if sys.platform == "win32" else ["sh", "-c", command]
-        res = self._run_process_safe(cmd_args, cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
+        if sys.platform == "win32":
+            res = self._run_process_safe(command, cwd=cwd, timeout_seconds=timeout_seconds, shell=True)
+        else:
+            res = self._run_process_safe(["sh", "-c", command], cwd=cwd, timeout_seconds=timeout_seconds, shell=False)
         return {"shell": "cmd", "command": command, "cwd": str(cwd), "exit_code": res["exit_code"], "stdout": res["stdout"], "stderr": res["stderr"]}
 
     def run_git(self, subcommand: str, timeout_seconds: int = 60, project: Optional[str] = None) -> Dict[str, Any]:
@@ -808,28 +830,31 @@ class LocalBridgeAgent:
             exec_ms = round((time.time() - t0) * 1000, 1)
             print(f"❌ Local execution failed after {exec_ms}ms: {error}", flush=True)
 
-        # 1. Instantly deliver result over distributed mesh
-        try:
-            mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
-            limits = httpx.Limits(max_keepalive_connections=0)
-            async with httpx.AsyncClient(timeout=3.0, limits=limits) as m_client:
-                await m_client.post(mesh_url, data=json.dumps({"task_id": task_id, "result": result, "error": error}))
-            deliv_ms = round((time.time() - t0) * 1000, 1)
-            print(f"🚀 Delivered result to AI assistant via mesh in {deliv_ms}ms", flush=True)
-        except Exception:
-            pass
+        # Deliver result concurrently to both distributed mesh and HTTP gateway to prevent network hangs
+        async def _deliver_mesh():
+            try:
+                mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
+                limits = httpx.Limits(max_keepalive_connections=0)
+                async with httpx.AsyncClient(timeout=3.0, limits=limits) as m_client:
+                    await m_client.post(mesh_url, data=json.dumps({"task_id": task_id, "result": result, "error": error}))
+            except Exception:
+                pass
 
-        # 2. Also submit to gateway HTTP endpoint as confirmation
-        try:
-            limits = httpx.Limits(max_keepalive_connections=0)
-            async with httpx.AsyncClient(timeout=4.0, limits=limits) as res_client:
-                await res_client.post(
-                    f"{self.server_url}/api/relay/result",
-                    headers=self.headers,
-                    json={"task_id": task_id, "result": result, "error": error}
-                )
-        except Exception:
-            pass
+        async def _deliver_http():
+            try:
+                limits = httpx.Limits(max_keepalive_connections=0)
+                async with httpx.AsyncClient(timeout=6.0, limits=limits) as res_client:
+                    await res_client.post(
+                        f"{self.server_url}/api/relay/result",
+                        headers=self.headers,
+                        json={"task_id": task_id, "result": result, "error": error}
+                    )
+            except Exception:
+                pass
+
+        await asyncio.gather(_deliver_mesh(), _deliver_http(), return_exceptions=True)
+        deliv_ms = round((time.time() - t0) * 1000, 1)
+        print(f"🚀 Delivered result to AI assistant in {deliv_ms}ms", flush=True)
 
         print("─" * 70 + "\n", flush=True)
 
@@ -914,6 +939,8 @@ class LocalBridgeAgent:
         print(f"🔑 Auth Token:       {self.auth_token[:8]}...{self.auth_token[-4:] if len(self.auth_token) > 12 else ''}", flush=True)
         print(f"🟢 Status:           ACTIVE & LISTENING (Press Ctrl+C to stop)", flush=True)
         print("────────────────────────────────────────────────────────────────────────", flush=True)
+        if sys.platform == "win32":
+            print("🛡️ Tip: If AI tools experience timeouts, run: 'python bridge.py --allow-defender'", flush=True)
         print("💡 Ready! When ChatGPT or Claude calls a tool, logs will stream below:\n", flush=True)
 
         poll_url = f"{self.server_url}/api/relay/poll"
@@ -939,6 +966,61 @@ class LocalBridgeAgent:
 
 
 CONFIG_FILE = Path.home() / ".universal_ide_bridge.json"
+
+
+def configure_defender_exclusions(projects_root: Optional[str] = None):
+    """
+    Adds Windows Defender exclusions for the Python interpreter and project directories
+    to prevent Defender from intercepting or delaying AI command execution.
+    Requires elevated Administrator privileges (triggers Windows UAC prompt).
+    """
+    if sys.platform != "win32":
+        print("ℹ️ Windows Defender exclusions are only applicable on Windows.")
+        return
+
+    python_exe = sys.executable
+    python_dir = str(Path(python_exe).parent.resolve())
+    root_path = str(Path(projects_root or ".").resolve())
+    script_dir = str(Path(__file__).parent.resolve())
+
+    target_paths = list(dict.fromkeys([root_path, script_dir, python_dir]))
+    target_procs = list(dict.fromkeys([Path(python_exe).name, "python.exe"]))
+
+    ps_cmds = []
+    for p in target_paths:
+        ps_cmds.append(f"Add-MpPreference -ExclusionPath '{p}'")
+    for proc in target_procs:
+        ps_cmds.append(f"Add-MpPreference -ExclusionProcess '{proc}'")
+
+    combined_ps = "; ".join(ps_cmds)
+
+    print("\n" + "=" * 70)
+    print("🛡️ Configuring Windows Security Defender Exclusions")
+    print("=" * 70)
+    print("Target Exclusions:")
+    for p in target_paths:
+        print(f"   📁 Folder:  {p}")
+    for proc in target_procs:
+        print(f"   ⚙️ Process: {proc}")
+    print("\nRequesting Windows Administrator approval (UAC prompt)...")
+
+    uac_command = (
+        f"Start-Process powershell.exe -Verb RunAs -ArgumentList "
+        f"'-NoProfile -ExecutionPolicy Bypass -Command \"{combined_ps}; "
+        f"Write-Host `\"`n[SUCCESS] Windows Defender exclusions added successfully! Workspaces are now protected from false positives and timeouts.`\" -ForegroundColor Green; "
+        f"Start-Sleep -Seconds 3\"'"
+    )
+
+    try:
+        subprocess.run(["powershell.exe", "-NoProfile", "-Command", uac_command], check=True)
+        print("✅ UAC authorization prompt dispatched.")
+        print("👉 Please click 'Yes' in the Windows prompt to apply the exclusions immediately.\n")
+    except Exception as e:
+        print(f"❌ Could not automatically request UAC: {e}")
+        print("\nManual Alternative (Open PowerShell as Administrator and run):")
+        for cmd in ps_cmds:
+            print(f"   {cmd}")
+        print()
 
 
 def load_saved_config() -> Dict[str, Any]:
@@ -975,6 +1057,7 @@ Examples:
   bridge --root "C:\\projects"           Run specifying projects root directory
   bridge --key "MY_TOKEN"               Run specifying your auth token
   bridge --save --root "C:\\projects"    Save root & token as global defaults
+  bridge --allow-defender               Add Windows Defender exclusions for your workspace
 """
     )
     saved = load_saved_config()
@@ -989,8 +1072,13 @@ Examples:
     parser.add_argument("--root", "-r", default=default_root, help=f"Parent directory of all projects (default: {default_root})")
     parser.add_argument("--save", action="store_true", help="Save the provided --root, --key, and --server as global defaults")
     parser.add_argument("--show-config", action="store_true", help="Display saved global configuration")
+    parser.add_argument("--allow-defender", action="store_true", help="Add Windows Defender exclusions for your workspace and Python (requires Admin UAC)")
 
     args = parser.parse_args()
+
+    if getattr(args, "allow_defender", False):
+        configure_defender_exclusions(args.root)
+        return
 
     if args.show_config:
         print("\n📁 Current Saved Global Bridge Configuration:")

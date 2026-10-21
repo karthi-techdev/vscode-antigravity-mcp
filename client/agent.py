@@ -213,28 +213,31 @@ class LocalBridgeAgent:
             exec_ms = round((time.time() - t0) * 1000, 1)
             print(f"❌ Local execution failed after {exec_ms}ms: {error}", flush=True)
 
-        # 1. Instantly deliver result over distributed mesh
-        try:
-            mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
-            limits = httpx.Limits(max_keepalive_connections=0)
-            async with httpx.AsyncClient(timeout=3.0, limits=limits) as m_client:
-                await m_client.post(mesh_url, data=json.dumps({"task_id": task_id, "result": result, "error": error}))
-            deliv_ms = round((time.time() - t0) * 1000, 1)
-            print(f"🚀 Delivered result to AI assistant via mesh in {deliv_ms}ms", flush=True)
-        except Exception:
-            pass
+        # Deliver result concurrently to both distributed mesh and HTTP gateway to prevent network hangs
+        async def _deliver_mesh():
+            try:
+                mesh_url = f"https://ntfy.sh/mcp_res_{task_id}"
+                limits = httpx.Limits(max_keepalive_connections=0)
+                async with httpx.AsyncClient(timeout=3.0, limits=limits) as m_client:
+                    await m_client.post(mesh_url, data=json.dumps({"task_id": task_id, "result": result, "error": error}))
+            except Exception:
+                pass
 
-        # 2. Also submit to gateway HTTP endpoint as confirmation
-        try:
-            limits = httpx.Limits(max_keepalive_connections=0)
-            async with httpx.AsyncClient(timeout=4.0, limits=limits) as res_client:
-                await res_client.post(
-                    f"{self.server_url}/api/relay/result",
-                    headers=self.headers,
-                    json={"task_id": task_id, "result": result, "error": error}
-                )
-        except Exception:
-            pass
+        async def _deliver_http():
+            try:
+                limits = httpx.Limits(max_keepalive_connections=0)
+                async with httpx.AsyncClient(timeout=6.0, limits=limits) as res_client:
+                    await res_client.post(
+                        f"{self.server_url}/api/relay/result",
+                        headers=self.headers,
+                        json={"task_id": task_id, "result": result, "error": error}
+                    )
+            except Exception:
+                pass
+
+        await asyncio.gather(_deliver_mesh(), _deliver_http(), return_exceptions=True)
+        deliv_ms = round((time.time() - t0) * 1000, 1)
+        print(f"🚀 Delivered result to AI assistant in {deliv_ms}ms", flush=True)
 
         print("─" * 70 + "\n", flush=True)
 
@@ -318,6 +321,8 @@ class LocalBridgeAgent:
             print(f"🎯 Active Project: {self.executor.active_project}")
         print(f"🌐 Cloud Relay:    {self.server_url}")
         print(f"🔑 Auth Token:     {self.auth_token[:8]}...{self.auth_token[-4:] if len(self.auth_token) > 12 else ''}")
+        if sys.platform == "win32":
+            print(f"🛡️ Defender Tip:   If AI tools experience timeouts, run: 'python -m client.agent --allow-defender'")
         print(f"=======================================================\n")
         print("Connected to cloud relay. Waiting for AI commands (ChatGPT, Claude, etc.)...\n")
 
@@ -347,6 +352,62 @@ class LocalBridgeAgent:
 CONFIG_FILE = Path.home() / ".universal_ide_bridge.json"
 
 
+def configure_defender_exclusions(projects_root: Optional[str] = None):
+    """
+    Adds Windows Defender exclusions for the Python interpreter and project directories
+    to prevent Defender from intercepting or delaying AI command execution.
+    Requires elevated Administrator privileges (triggers Windows UAC prompt).
+    """
+    if sys.platform != "win32":
+        print("ℹ️ Windows Defender exclusions are only applicable on Windows.")
+        return
+
+    import subprocess
+    python_exe = sys.executable
+    python_dir = str(Path(python_exe).parent.resolve())
+    root_path = str(Path(projects_root or ".").resolve())
+    script_dir = str(Path(__file__).parent.parent.resolve())
+
+    target_paths = list(dict.fromkeys([root_path, script_dir, python_dir]))
+    target_procs = list(dict.fromkeys([Path(python_exe).name, "python.exe"]))
+
+    ps_cmds = []
+    for p in target_paths:
+        ps_cmds.append(f"Add-MpPreference -ExclusionPath '{p}'")
+    for proc in target_procs:
+        ps_cmds.append(f"Add-MpPreference -ExclusionProcess '{proc}'")
+
+    combined_ps = "; ".join(ps_cmds)
+
+    print("\n" + "=" * 70)
+    print("🛡️ Configuring Windows Security Defender Exclusions")
+    print("=" * 70)
+    print("Target Exclusions:")
+    for p in target_paths:
+        print(f"   📁 Folder:  {p}")
+    for proc in target_procs:
+        print(f"   ⚙️ Process: {proc}")
+    print("\nRequesting Windows Administrator approval (UAC prompt)...")
+
+    uac_command = (
+        f"Start-Process powershell.exe -Verb RunAs -ArgumentList "
+        f"'-NoProfile -ExecutionPolicy Bypass -Command \"{combined_ps}; "
+        f"Write-Host `\"`n[SUCCESS] Windows Defender exclusions added successfully! Workspaces are now protected from false positives and timeouts.`\" -ForegroundColor Green; "
+        f"Start-Sleep -Seconds 3\"'"
+    )
+
+    try:
+        subprocess.run(["powershell.exe", "-NoProfile", "-Command", uac_command], check=True)
+        print("✅ UAC authorization prompt dispatched.")
+        print("👉 Please click 'Yes' in the Windows prompt to apply the exclusions immediately.\n")
+    except Exception as e:
+        print(f"❌ Could not automatically request UAC: {e}")
+        print("\nManual Alternative (Open PowerShell as Administrator and run):")
+        for cmd in ps_cmds:
+            print(f"   {cmd}")
+        print()
+
+
 def load_saved_config() -> dict:
     if CONFIG_FILE.exists():
         try:
@@ -369,8 +430,13 @@ def main():
     parser.add_argument("--key", "-k", "--token", dest="key", default=default_key, help="User Auth Token")
     parser.add_argument("--dir", default=os.getenv("MCP_WORKSPACE_DIR", "."), help="Path to initial workspace or project")
     parser.add_argument("--root", "-r", default=default_root, help=f"Parent directory containing all projects (default: {default_root})")
+    parser.add_argument("--allow-defender", action="store_true", help="Add Windows Defender exclusions for your workspace and Python (requires Admin UAC)")
 
     args = parser.parse_args()
+
+    if getattr(args, "allow_defender", False):
+        configure_defender_exclusions(args.root)
+        return
 
     agent = LocalBridgeAgent(
         server_url=args.server,

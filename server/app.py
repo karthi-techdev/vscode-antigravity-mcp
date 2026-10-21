@@ -13,6 +13,7 @@ from server.auth import (
     generate_user_token,
     DYNAMIC_TOKENS
 )
+from server.config import RELAY_TASK_TIMEOUT
 from server.relay import relay_manager, TaskResultSubmission
 from server.tools import register_tools
 
@@ -184,6 +185,17 @@ async def get_bridge_script():
     return PlainTextResponse(content, media_type="text/x-python")
 
 
+@app.get("/allow_defender.bat", include_in_schema=False)
+async def get_allow_defender_script():
+    """Serves the one-click Windows Defender exclusion script for zero-clone setup."""
+    bat_file = Path(__file__).parent.parent / "allow_defender.bat"
+    if not bat_file.exists():
+        raise HTTPException(status_code=404, detail="allow_defender.bat not found")
+    with open(bat_file, "r", encoding="utf-8") as f:
+        content = f.read()
+    return PlainTextResponse(content, media_type="text/plain")
+
+
 @app.get("/api/status", include_in_schema=False)
 async def get_user_status(current_user: str = Depends(get_current_user)):
     """Check whether the authenticated user's local IDE companion is currently online."""
@@ -349,7 +361,7 @@ async def dispatch_action_safe(user_id: str, tool_name: str, parameters: Dict[st
     except TimeoutError as te:
         return {
             "status": "timeout",
-            "error": f"Local IDE companion timed out after 30s. Please ensure 'python bridge.py' is running on your machine."
+            "error": f"Local IDE companion timed out after {RELAY_TASK_TIMEOUT}s. Please ensure 'python bridge.py' is running on your machine."
         }
     except Exception as e:
         return {
