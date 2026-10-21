@@ -362,7 +362,7 @@ def configure_defender_exclusions(projects_root: Optional[str] = None):
         print("ℹ️ Windows Defender exclusions are only applicable on Windows.")
         return
 
-    import subprocess
+    import tempfile
     python_exe = sys.executable
     python_dir = str(Path(python_exe).parent.resolve())
     root_path = str(Path(projects_root or ".").resolve())
@@ -370,14 +370,6 @@ def configure_defender_exclusions(projects_root: Optional[str] = None):
 
     target_paths = list(dict.fromkeys([root_path, script_dir, python_dir]))
     target_procs = list(dict.fromkeys([Path(python_exe).name, "python.exe"]))
-
-    ps_cmds = []
-    for p in target_paths:
-        ps_cmds.append(f"Add-MpPreference -ExclusionPath '{p}'")
-    for proc in target_procs:
-        ps_cmds.append(f"Add-MpPreference -ExclusionProcess '{proc}'")
-
-    combined_ps = "; ".join(ps_cmds)
 
     print("\n" + "=" * 70)
     print("🛡️ Configuring Windows Security Defender Exclusions")
@@ -389,23 +381,53 @@ def configure_defender_exclusions(projects_root: Optional[str] = None):
         print(f"   ⚙️ Process: {proc}")
     print("\nRequesting Windows Administrator approval (UAC prompt)...")
 
-    uac_command = (
-        f"Start-Process powershell.exe -Verb RunAs -ArgumentList "
-        f"'-NoProfile -ExecutionPolicy Bypass -Command \"{combined_ps}; "
-        f"Write-Host `\"`n[SUCCESS] Windows Defender exclusions added successfully! Workspaces are now protected from false positives and timeouts.`\" -ForegroundColor Green; "
-        f"Start-Sleep -Seconds 3\"'"
-    )
+    # Generate a temporary .ps1 script file to prevent command-line quoting and space issues
+    ps_lines = [
+        "# Temporary Windows Defender configuration script",
+        "$ErrorActionPreference = 'SilentlyContinue'"
+    ]
+    for p in target_paths:
+        escaped_p = p.replace("'", "''")
+        ps_lines.append(f"Add-MpPreference -ExclusionPath '{escaped_p}'")
+    for proc in target_procs:
+        escaped_proc = proc.replace("'", "''")
+        ps_lines.append(f"Add-MpPreference -ExclusionProcess '{escaped_proc}'")
 
+    ps_lines.append('Write-Host ""')
+    ps_lines.append('Write-Host "[SUCCESS] Windows Defender exclusions configured successfully!" -ForegroundColor Green')
+    ps_lines.append('Write-Host "Workspaces and Python are now whitelisted from false positives and timeouts." -ForegroundColor Cyan')
+    ps_lines.append('Start-Sleep -Seconds 3')
+
+    temp_script = tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8")
     try:
-        subprocess.run(["powershell.exe", "-NoProfile", "-Command", uac_command], check=True)
+        temp_script.write("\r\n".join(ps_lines))
+        temp_script.close()
+
+        # Execute the script via elevated Start-Process using clean argument array
+        # This completely avoids all string escaping and whitespace issues on Windows
+        script_file = temp_script.name.replace("'", "''")
+        uac_launcher = (
+            f"$script = '{script_file}'; "
+            f"Start-Process powershell.exe -Verb RunAs -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script) -Wait"
+        )
+
+        subprocess.run(["powershell.exe", "-NoProfile", "-Command", uac_launcher], check=True)
         print("✅ UAC authorization prompt dispatched.")
         print("👉 Please click 'Yes' in the Windows prompt to apply the exclusions immediately.\n")
     except Exception as e:
         print(f"❌ Could not automatically request UAC: {e}")
         print("\nManual Alternative (Open PowerShell as Administrator and run):")
-        for cmd in ps_cmds:
-            print(f"   {cmd}")
+        for p in target_paths:
+            print(f"   Add-MpPreference -ExclusionPath '{p}'")
+        for proc in target_procs:
+            print(f"   Add-MpPreference -ExclusionProcess '{proc}'")
         print()
+    finally:
+        try:
+            if os.path.exists(temp_script.name):
+                os.unlink(temp_script.name)
+        except Exception:
+            pass
 
 
 def load_saved_config() -> dict:
